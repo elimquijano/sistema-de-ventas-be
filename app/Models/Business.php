@@ -1,0 +1,69 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+class Business extends Model
+{
+    use HasFactory;
+    protected $guarded = [];
+    protected $appends = ['products_count', 'services_count', 'sales_count'];
+
+    public function getProductsCountAttribute()
+    {
+        return $this->products()->count();
+    }
+
+    public function getServicesCountAttribute()
+    {
+        return $this->services()->count();
+    }
+
+    public function getSalesCountAttribute()
+    {
+        return $this->sales()->count();
+    }
+
+    public function owner()
+    {
+        return $this->belongsTo(User::class, 'user_id');
+    }
+    public function users()
+    {
+        return $this->hasMany(User::class);
+    }
+    public function products()
+    {
+        return $this->hasMany(Product::class);
+    }
+    public function services()
+    {
+        return $this->hasMany(Service::class);
+    }
+    public function sales()
+    {
+        return $this->hasMany(Sale::class);
+    }
+    public function expenses()
+    {
+        return $this->hasMany(Expense::class);
+    }
+    public function credits()
+    {
+        return $this->hasMany(Credit::class);
+    }
+    public function categories()
+    {
+        return $this->hasMany(Category::class);
+    }
+    public function cashRegisters()
+    {
+        return $this->hasMany(CashRegister::class);
+    }
+    public function loans()
+    {
+        return $this->hasMany(Loan::class);
+    }
+}

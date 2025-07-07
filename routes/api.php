@@ -5,8 +5,18 @@ use App\Http\Controllers\Api\PermissionController;
 use App\Http\Controllers\Api\RoleController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\BusinessController;
+use App\Http\Controllers\Api\CashRegisterController;
+use App\Http\Controllers\Api\CategoryController;
+use App\Http\Controllers\Api\CreditController;
 use App\Http\Controllers\Api\DashboardController;
+use App\Http\Controllers\Api\ExpenseController;
+use App\Http\Controllers\Api\FileController;
+use App\Http\Controllers\Api\LoanController;
 use App\Http\Controllers\Api\NotificationController;
+use App\Http\Controllers\Api\ProductController;
+use App\Http\Controllers\Api\SaleController;
+use App\Http\Controllers\Api\ServiceController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('auth')->group(function () {
@@ -54,4 +64,44 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::apiResource('notifications', NotificationController::class)->only(['index', 'destroy']);
     Route::patch('notifications/{notification}/read', [NotificationController::class, 'markAsRead']);
     Route::patch('notifications/mark-all-read', [NotificationController::class, 'markAllAsRead']);
+
+    // Negocios
+    Route::get('/businesses/{business}/dashboard', [BusinessController::class, 'dashboard']);
+    Route::apiResource('businesses', BusinessController::class);
+
+    // Categorías
+    Route::apiResource('categories', CategoryController::class);
+
+    // Inventario
+    Route::patch('products/{product}/stock', [ProductController::class, 'updateStock']);
+    Route::get('products/low-stock', [ProductController::class, 'getLowStock']);
+    Route::apiResource('products', ProductController::class);
+    Route::patch('services/{service}/status', [ServiceController::class, 'updateStatus']);
+    Route::apiResource('services', ServiceController::class);
+
+    // Caja Registradora
+    Route::get('/cash-registers/current', [CashRegisterController::class, 'current']);
+    Route::post('/cash-registers', [CashRegisterController::class, 'store']);
+    Route::post('/cash-registers/{cashRegister}/close', [CashRegisterController::class, 'close']);
+    Route::get('/cash-registers/{cashRegister}/report', [CashRegisterController::class, 'report']);
+
+    // Ventas y Créditos
+    Route::get('sales/daily/{date}', [SaleController::class, 'getDailySales']);
+    Route::get('sales/monthly/{year}/{month}', [SaleController::class, 'getMonthlySales']);
+    Route::apiResource('sales', SaleController::class);
+    Route::post('/credits/{credit}/payment', [CreditController::class, 'addPayment']);
+    Route::get('credits/pending', [CreditController::class, 'getPending']); // Nueva ruta
+    Route::apiResource('credits', CreditController::class)->except(['store', 'update', 'destroy']);
+
+    // Gastos
+    Route::get('expenses/category/{categoryId}', [ExpenseController::class, 'getByCategory']); // Nueva ruta
+    Route::apiResource('expenses', ExpenseController::class);
+
+    // Préstamos
+    Route::post('loans/{loan}/return', [LoanController::class, 'markAsReturned']);
+    Route::get('loans/pending', [LoanController::class, 'getPending']);
+    Route::apiResource('loans', LoanController::class);
+
+    // Subida de archivos
+    Route::post('/files/upload', [FileController::class, 'upload']);
 });

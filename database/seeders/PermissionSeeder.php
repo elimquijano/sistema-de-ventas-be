@@ -13,12 +13,6 @@ class PermissionSeeder extends Seeder
         $permissions = [
             // Dashboard permissions
             ['name' => 'dashboard.view', 'display_name' => 'Ver Dashboard', 'module' => 'Dashboard', 'type' => 'view'],
-            ['name' => 'dashboard.analytics', 'display_name' => 'Ver Analytics', 'module' => 'Dashboard', 'type' => 'view'],
-
-            // Widget permissions
-            ['name' => 'widget.statistics', 'display_name' => 'Ver Estadísticas', 'module' => 'Widget', 'type' => 'view'],
-            ['name' => 'widget.data', 'display_name' => 'Ver Datos', 'module' => 'Widget', 'type' => 'view'],
-            ['name' => 'widget.chart', 'display_name' => 'Ver Gráficos', 'module' => 'Widget', 'type' => 'view'],
 
             // Users permissions
             ['name' => 'users.view', 'display_name' => 'Ver Usuarios', 'module' => 'Users', 'type' => 'view'],
@@ -27,19 +21,6 @@ class PermissionSeeder extends Seeder
             ['name' => 'users.delete', 'display_name' => 'Eliminar Usuarios', 'module' => 'Users', 'type' => 'delete'],
             ['name' => 'users.roles', 'display_name' => 'Gestionar Roles', 'module' => 'Users', 'type' => 'manage'],
             ['name' => 'users.permissions', 'display_name' => 'Gestionar Permisos', 'module' => 'Users', 'type' => 'manage'],
-
-            // Customers permissions
-            ['name' => 'customers.view', 'display_name' => 'Ver Clientes', 'module' => 'Customer', 'type' => 'view'],
-            ['name' => 'customers.create', 'display_name' => 'Crear Clientes', 'module' => 'Customer', 'type' => 'create'],
-            ['name' => 'customers.edit', 'display_name' => 'Editar Clientes', 'module' => 'Customer', 'type' => 'edit'],
-            ['name' => 'customers.delete', 'display_name' => 'Eliminar Clientes', 'module' => 'Customer', 'type' => 'delete'],
-            ['name' => 'customers.details', 'display_name' => 'Ver Detalles de Clientes', 'module' => 'Customer', 'type' => 'view'],
-
-            // Application permissions
-            ['name' => 'chat.view', 'display_name' => 'Ver Chat', 'module' => 'Application', 'type' => 'view'],
-            ['name' => 'kanban.view', 'display_name' => 'Ver Kanban', 'module' => 'Application', 'type' => 'view'],
-            ['name' => 'mail.view', 'display_name' => 'Ver Correo', 'module' => 'Application', 'type' => 'view'],
-            ['name' => 'calendar.view', 'display_name' => 'Ver Calendario', 'module' => 'Application', 'type' => 'view'],
 
             // System permissions
             ['name' => 'system.settings', 'display_name' => 'Configuración del Sistema', 'module' => 'System', 'type' => 'manage'],

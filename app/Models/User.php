@@ -23,6 +23,7 @@ class User extends Authenticatable
         'status',
         'last_login_at',
         'last_login_ip',
+        'business_id'
     ];
 
     protected $hidden = [
@@ -68,5 +69,17 @@ class User extends Authenticatable
                 ->orWhere('last_name', 'like', "%{$search}%")
                 ->orWhere('email', 'like', "%{$search}%");
         });
+    }
+
+    /** El negocio que posee el usuario. */
+    public function ownedBusiness()
+    {
+        return $this->hasOne(Business::class, 'user_id');
+    }
+
+    /** El negocio al que está asignado el usuario. */
+    public function business()
+    {
+        return $this->belongsTo(Business::class);
     }
 }
