@@ -13,16 +13,34 @@ use Illuminate\Support\Facades\Gate;
 
 class SaleController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
-        // Gate::authorize('view-any-sale');
-        $sales = Auth::user()->business->sales()->with('items', 'creator')->latest()->paginate(15);
+        $query = Auth::user()->business->sales()->with(['items', 'creator', 'business']);
+
+        if ($request->filled('search')) {
+            $searchTerm = $request->search;
+            $query->where(function ($q) use ($searchTerm) {
+                $q->where('sale_number', 'like', "%{$searchTerm}%")
+                    ->orWhere('customer_name', 'like', "%{$searchTerm}%");
+            });
+        }
+        if ($request->filled('payment_method')) {
+            $query->where('payment_method', $request->payment_method);
+        }
+        if ($request->filled('payment_status')) {
+            $query->where('payment_status', $request->payment_status);
+        }
+        if ($request->filled('date')) {
+            $query->whereDate('created_at', $request->date);
+        }
+
+        $sales = $query->latest()->paginate($request->get('per_page', 15));
+
         return response()->json($sales);
     }
 
     public function store(Request $request)
     {
-        // Gate::authorize('create-sale');
         $business = Auth::user()->business;
         $validated = $request->validate([
             'customer_name' => 'required|string|max:255',
@@ -34,10 +52,7 @@ class SaleController extends Controller
         ]);
 
         $sale = DB::transaction(function () use ($validated, $business) {
-            $cashRegister = $business->cashRegisters()->where('status', 'open')->first();
-            if (!$cashRegister) {
-                throw new \Exception('No hay una caja registradora abierta para realizar la venta.');
-            }
+            $cashRegister = $business->cashRegisters()->where('status', 'open')->firstOrFail();
 
             $sale = $business->sales()->create([
                 'customer_name' => $validated['customer_name'],
@@ -45,13 +60,13 @@ class SaleController extends Controller
                 'payment_status' => $validated['payment_method'] === 'credit' ? 'pending' : 'paid',
                 'created_by' => Auth::id(),
                 'cash_register_id' => $cashRegister->id,
-                'total_amount' => 0, // Se calcula a continuación
+                'total_amount' => 0,
             ]);
 
             $totalAmount = 0;
             foreach ($validated['items'] as $itemData) {
                 $modelClass = $itemData['type'] === 'product' ? Product::class : Service::class;
-                $item = $modelClass::find($itemData['id']);
+                $item = $modelClass::findOrFail($itemData['id']);
 
                 if ($itemData['type'] === 'product') {
                     if ($item->stock < $itemData['quantity']) {
@@ -75,13 +90,21 @@ class SaleController extends Controller
 
             $sale->update(['total_amount' => $totalAmount]);
 
+            // SIEMPRE INCREMENTAR expected_amount con el total de la venta
+            $cashRegister->increment('expected_amount', $totalAmount);
+
+            // Solo incrementar cash_sales_amount si el pago es en efectivo
+            if ($sale->payment_method === 'cash') {
+                $cashRegister->increment('cash_sales_amount', $totalAmount);
+            }
+
             if ($sale->payment_method === 'credit') {
                 $business->credits()->create([
                     'sale_id' => $sale->id,
                     'customer_name' => $sale->customer_name,
                     'total_amount' => $totalAmount,
                     'pending_amount' => $totalAmount,
-                    'due_date' => now()->addDays(30), // Opcional: recibir de la request
+                    'due_date' => now()->addDays(30),
                 ]);
             }
 
@@ -93,14 +116,20 @@ class SaleController extends Controller
 
     public function show(Sale $sale)
     {
-        // Gate::authorize('view-sale', $sale);
         return $sale->load('items.item', 'creator', 'cashRegister');
     }
 
     public function destroy(Sale $sale)
     {
-        // Gate::authorize('delete-sale', $sale);
         DB::transaction(function () use ($sale) {
+            // Decrementar expected_amount al eliminar la venta
+            if ($sale->cashRegister) {
+                $sale->cashRegister->decrement('expected_amount', $sale->total_amount);
+            }
+            // Revertir el monto en la caja si se elimina una venta en efectivo
+            if ($sale->payment_method === 'cash' && $sale->cashRegister) {
+                $sale->cashRegister->decrement('cash_sales_amount', $sale->total_amount);
+            }
             foreach ($sale->items as $item) {
                 if ($item->item_type === Product::class) {
                     $item->item->increment('stock', $item->quantity);
@@ -111,26 +140,19 @@ class SaleController extends Controller
         return response()->json(null, 204);
     }
 
-    /**
-     * Obtiene las ventas de un día específico.
-     */
-    public function getDailySales(Request $request, $date)
+    public function getDailySales(Request $request)
     {
-        // Gate::authorize('view-any-sale');
+        $date = $request->query('date', now()->format('Y-m-d'));
         $sales = Auth::user()->business->sales()
             ->whereDate('created_at', $date)
             ->with('items', 'creator')
             ->latest()
-            ->paginate(15);
+            ->get();
         return response()->json($sales);
     }
 
-    /**
-     * Obtiene las ventas de un mes y año específicos.
-     */
     public function getMonthlySales(Request $request, $year, $month)
     {
-        // Gate::authorize('view-any-sale');
         $sales = Auth::user()->business->sales()
             ->whereYear('created_at', $year)
             ->whereMonth('created_at', $month)

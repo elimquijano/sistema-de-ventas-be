@@ -8,7 +8,19 @@ use Illuminate\Database\Eloquent\Model;
 class Loan extends Model
 {
     use HasFactory;
-    protected $guarded = [];
+
+    protected $fillable = [
+        'description',
+        'amount',
+        'loan_date',
+        'due_date',
+        'paid_amount',
+        'pending_amount',
+        'status',
+        'business_id',
+        'created_by',
+    ];
+
     protected $casts = ['loan_date' => 'date', 'due_date' => 'date'];
 
     public function business()

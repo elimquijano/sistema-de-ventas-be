@@ -7,13 +7,36 @@ use App\Models\Expense;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Storage; // Import Storage facade
 
 class ExpenseController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
         // Gate::authorize('view-any-expense');
-        $expenses = Auth::user()->business->expenses()->with('category')->latest('expense_date')->paginate(15);
+
+        $query = Auth::user()->business->expenses()->with(['category', 'creator']);
+
+        // Search by description
+        if ($request->filled('search')) {
+            $query->where('description', 'like', '%' . $request->search . '%');
+        }
+
+        // Filter by category
+        if ($request->filled('category_id')) {
+            $query->where('category_id', $request->category_id);
+        }
+
+        // Filter by date range
+        if ($request->filled('date_from')) {
+            $query->whereDate('expense_date', '>=', $request->date_from);
+        }
+        if ($request->filled('date_to')) {
+            $query->whereDate('expense_date', '<=', $request->date_to);
+        }
+
+        $expenses = $query->latest('expense_date')->paginate($request->get('per_page', 15));
+
         return response()->json($expenses);
     }
 
@@ -25,16 +48,20 @@ class ExpenseController extends Controller
             'amount' => 'required|numeric|min:0',
             'expense_date' => 'required|date',
             'category_id' => 'required|exists:categories,id',
-            'receipt_path' => 'nullable|string',
+            'receipt_path' => 'nullable|string|max:255',
+            'notes' => 'nullable|string',
         ]);
+
         $expense = Auth::user()->business->expenses()->create($validated + ['created_by' => Auth::id()]);
-        return response()->json($expense, 201);
+
+        // Return the expense with the creator relationship loaded
+        return response()->json($expense->load('creator', 'category'), 201);
     }
 
     public function show(Expense $expense)
     {
         // Gate::authorize('view-expense', $expense);
-        return $expense->load('category');
+        return $expense->load(['category', 'creator']);
     }
 
     public function update(Request $request, Expense $expense)
@@ -45,15 +72,25 @@ class ExpenseController extends Controller
             'amount' => 'sometimes|required|numeric|min:0',
             'expense_date' => 'sometimes|required|date',
             'category_id' => 'sometimes|required|exists:categories,id',
-            'receipt_path' => 'nullable|string',
+            'receipt_path' => 'nullable|string|max:255',
+            'notes' => 'nullable|string',
         ]);
+
         $expense->update($validated);
-        return response()->json($expense);
+
+        // Return the expense with the creator relationship loaded
+        return response()->json($expense->load('creator', 'category'));
     }
 
     public function destroy(Expense $expense)
     {
         // Gate::authorize('delete-expense', $expense);
+
+        // Also delete the receipt file from storage if it exists
+        if ($expense->receipt_path) {
+            Storage::disk('public')->delete($expense->receipt_path);
+        }
+
         $expense->delete();
         return response()->json(null, 204);
     }
@@ -66,7 +103,7 @@ class ExpenseController extends Controller
         // Gate::authorize('view-any-expense');
         $expenses = Auth::user()->business->expenses()
             ->where('category_id', $categoryId)
-            ->with('category')
+            ->with(['category', 'creator']) // Also load creator here
             ->latest('expense_date')
             ->paginate(15);
         return response()->json($expenses);

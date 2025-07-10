@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 class CashRegister extends Model
 {
     use HasFactory;
-    protected $guarded = [];
+    protected $guarded = []; // Asegura que todos los campos puedan ser asignados masivamente
     protected $casts = ['opened_at' => 'datetime', 'closed_at' => 'datetime'];
 
     public function business()

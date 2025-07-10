@@ -11,65 +11,73 @@ use Illuminate\Support\Facades\Gate;
 
 class LoanController extends Controller
 {
-    /**
-     * Muestra una lista de préstamos.
-     */
-    public function index()
+    public function index(Request $request)
     {
         // Gate::authorize('view-any-loan');
-        $loans = Auth::user()->business->loans()->with('creator')->latest()->paginate(15);
+        $query = Auth::user()->business->loans()->with('creator');
+
+        // Filter by description
+        if ($request->filled('search')) {
+            $query->where('description', 'like', '%' . $request->search . '%');
+        }
+
+        // Filter by status
+        if ($request->filled('status')) {
+            $query->where('status', $request->status);
+        }
+
+        $loans = $query->latest()->paginate($request->get('per_page', 15));
         return response()->json($loans);
     }
 
-    /**
-     * Almacena un nuevo préstamo.
-     */
     public function store(Request $request)
     {
         // Gate::authorize('create-loan');
         $validated = $request->validate([
             'description' => 'required|string|max:255',
-            'amount' => 'required|numeric|min:0',
+            'amount' => 'required|numeric|min:0.01',
+            'paid_amount' => 'nullable|numeric|min:0|lte:amount',
             'loan_date' => 'required|date',
             'due_date' => 'nullable|date|after_or_equal:loan_date',
         ]);
-        $loan = Auth::user()->business->loans()->create($validated + [
+
+        $paidAmount = $validated['paid_amount'] ?? 0;
+        $pendingAmount = $validated['amount'] - $paidAmount;
+
+        $loan = Auth::user()->business->loans()->create([
+            'description' => $validated['description'],
+            'amount' => $validated['amount'],
+            'paid_amount' => $paidAmount,
+            'pending_amount' => $pendingAmount,
+            'loan_date' => $validated['loan_date'],
+            'due_date' => $validated['due_date'],
             'created_by' => Auth::id(),
-            'pending_amount' => $validated['amount'], // Inicialmente el monto pendiente es el total
-            'status' => 'pending',
+            'status' => $pendingAmount <= 0 ? 'paid' : 'pending',
         ]);
-        return response()->json($loan, 201);
+
+        return response()->json($loan->load('creator'), 201);
     }
 
-    /**
-     * Muestra un préstamo específico.
-     */
     public function show(Loan $loan)
     {
         // Gate::authorize('view-loan', $loan);
         return $loan->load('creator');
     }
 
-    /**
-     * Actualiza un préstamo específico.
-     */
     public function update(Request $request, Loan $loan)
     {
         // Gate::authorize('update-loan', $loan);
         $validated = $request->validate([
             'description' => 'sometimes|required|string|max:255',
-            'amount' => 'sometimes|required|numeric|min:0',
             'loan_date' => 'sometimes|required|date',
             'due_date' => 'nullable|date|after_or_equal:loan_date',
             'status' => 'sometimes|required|in:pending,paid,overdue',
         ]);
+
         $loan->update($validated);
         return response()->json($loan);
     }
 
-    /**
-     * Elimina un préstamo específico.
-     */
     public function destroy(Loan $loan)
     {
         // Gate::authorize('delete-loan', $loan);
@@ -77,12 +85,9 @@ class LoanController extends Controller
         return response()->json(null, 204);
     }
 
-    /**
-     * Marca un préstamo como devuelto (o registra un pago).
-     */
-    public function markAsReturned(Request $request, Loan $loan)
+    public function addPayment(Request $request, Loan $loan)
     {
-        // Gate::authorize('update-loan', $loan); // Reutilizar permiso de actualización
+        // Gate::authorize('update-loan', $loan);
         $validated = $request->validate([
             'amount' => 'required|numeric|min:0.01|max:' . $loan->pending_amount,
         ]);
@@ -97,19 +102,5 @@ class LoanController extends Controller
         });
 
         return response()->json($loan);
-    }
-
-    /**
-     * Obtiene todos los préstamos pendientes.
-     */
-    public function getPending()
-    {
-        // Gate::authorize('view-any-loan');
-        $loans = Auth::user()->business->loans()
-            ->where('status', 'pending')
-            ->with('creator')
-            ->latest()
-            ->paginate(15);
-        return response()->json($loans);
     }
 }

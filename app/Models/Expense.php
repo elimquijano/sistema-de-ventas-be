@@ -9,19 +9,24 @@ use Illuminate\Support\Facades\Storage;
 class Expense extends Model
 {
     use HasFactory;
-    protected $guarded = [];
+
+    // It's better to use $fillable to be explicit about what can be mass-assigned
+    protected $fillable = [
+        'description',
+        'amount',
+        'expense_date',
+        'category_id',
+        'business_id',
+        'created_by',
+        'receipt_path',
+        'notes', // Add notes here
+    ];
+
     protected $casts = ['expense_date' => 'date'];
     protected $appends = ['receipt_url'];
 
-    protected static function boot()
-    {
-        parent::boot();
-        static::deleting(function ($expense) {
-            if ($expense->receipt_path) {
-                Storage::disk('public')->delete($expense->receipt_path);
-            }
-        });
-    }
+    // No need for the deleting boot method if we handle it in the controller's destroy method.
+    // This keeps the model cleaner.
 
     public function getReceiptUrlAttribute()
     {

@@ -75,6 +75,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // Inventario
     Route::patch('products/{product}/stock', [ProductController::class, 'updateStock']);
     Route::get('products/low-stock', [ProductController::class, 'getLowStock']);
+    Route::post('products/{product}', [ProductController::class, 'update'])->name('products.update.post');
     Route::apiResource('products', ProductController::class);
     Route::patch('services/{service}/status', [ServiceController::class, 'updateStatus']);
     Route::apiResource('services', ServiceController::class);
@@ -86,21 +87,23 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/cash-registers/{cashRegister}/report', [CashRegisterController::class, 'report']);
 
     // Ventas y Créditos
-    Route::get('sales/daily/{date}', [SaleController::class, 'getDailySales']);
+    Route::get('sales/daily', [SaleController::class, 'getDailySales']); // MODIFICADO
     Route::get('sales/monthly/{year}/{month}', [SaleController::class, 'getMonthlySales']);
     Route::apiResource('sales', SaleController::class);
+
     Route::post('/credits/{credit}/payment', [CreditController::class, 'addPayment']);
     Route::get('credits/pending', [CreditController::class, 'getPending']); // Nueva ruta
-    Route::apiResource('credits', CreditController::class)->except(['store', 'update', 'destroy']);
+    Route::apiResource('credits', CreditController::class)->except(['store', 'destroy']);
 
     // Gastos
     Route::get('expenses/category/{categoryId}', [ExpenseController::class, 'getByCategory']); // Nueva ruta
     Route::apiResource('expenses', ExpenseController::class);
 
     // Préstamos
-    Route::post('loans/{loan}/return', [LoanController::class, 'markAsReturned']);
+    Route::post('loans/{loan}/payment', [LoanController::class, 'addPayment']); // Changed from 'return'
     Route::get('loans/pending', [LoanController::class, 'getPending']);
-    Route::apiResource('loans', LoanController::class);
+    Route::apiResource('loans', LoanController::class)->except(['update']); // Exclude default update if we have a custom one
+    Route::post('loans/{loan}', [LoanController::class, 'update']); // For handling form-data if needed, or just use PUT
 
     // Subida de archivos
     Route::post('/files/upload', [FileController::class, 'upload']);
