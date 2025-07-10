@@ -66,4 +66,8 @@ class Business extends Model
     {
         return $this->hasMany(Loan::class);
     }
+    public function purchases()
+    {
+        return $this->hasMany(Purchase::class);
+    }
 }

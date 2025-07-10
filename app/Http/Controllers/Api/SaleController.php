@@ -10,6 +10,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Log;
 
 class SaleController extends Controller
 {
@@ -160,5 +161,37 @@ class SaleController extends Controller
             ->latest()
             ->paginate(15);
         return response()->json($sales);
+    }
+
+    /**
+     * Genera y devuelve un recibo en PDF para una venta específica.
+     *
+     * @param  \App\Models\Sale  $sale
+     * @return \Illuminate\Http\Response
+     */
+    public function generateReceipt(Sale $sale)
+    {
+        // Asegurarse de que el usuario solo pueda acceder a las ventas de su negocio
+        if (Auth::user()->business_id !== $sale->business_id) {
+            return response()->json(['message' => 'No autorizado'], 403);
+        }
+
+        // Cargar las relaciones necesarias
+        $sale->load('items', 'business', 'creator');
+
+        $data = [
+            'sale' => $sale,
+            'business' => $sale->business,
+        ];
+
+        try {
+            $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('pdf.sale_receipt', $data);
+
+            // Devolver el PDF en el navegador en lugar de guardarlo
+            return $pdf->stream('recibo-' . $sale->sale_number . '.pdf');
+        } catch (\Exception $e) {
+            Log::error("Error generando recibo de venta PDF: " . $e->getMessage());
+            return response()->json(['message' => 'Ocurrió un error al generar el recibo.'], 500);
+        }
     }
 }

@@ -73,6 +73,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::apiResource('categories', CategoryController::class);
 
     // Inventario
+    // Búsqueda de productos para autocompletado
+    Route::get('products/search', [ProductController::class, 'search']);
     Route::patch('products/{product}/stock', [ProductController::class, 'updateStock']);
     Route::get('products/low-stock', [ProductController::class, 'getLowStock']);
     Route::post('products/{product}', [ProductController::class, 'update'])->name('products.update.post');
@@ -107,4 +109,10 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Subida de archivos
     Route::post('/files/upload', [FileController::class, 'upload']);
+
+    // Compras
+    Route::post('purchases', [App\Http\Controllers\Api\PurchaseController::class, 'store']);
+
+    // Generar recibo de venta en PDF
+    Route::get('sales/{sale}/receipt', [App\Http\Controllers\Api\SaleController::class, 'generateReceipt']);
 });

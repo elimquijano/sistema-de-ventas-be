@@ -102,4 +102,16 @@ class ProductController extends Controller
             ->paginate(15);
         return response()->json($products);
     }
+
+    public function search(Request $request)
+    {
+        $term = $request->query('term');
+        $products = Auth::user()->business->products()
+            ->where('name', 'LIKE', "%{$term}%")
+            ->orWhere('barcode', 'LIKE', "%{$term}%")
+            ->select('id', 'name', 'cost', 'price', 'stock')
+            ->limit(10)
+            ->get();
+        return response()->json($products);
+    }
 }
