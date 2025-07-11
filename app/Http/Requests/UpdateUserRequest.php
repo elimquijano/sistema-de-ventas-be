@@ -28,6 +28,7 @@ class UpdateUserRequest extends FormRequest
             'status' => 'sometimes|in:active,inactive,pending',
             'role_ids' => 'sometimes|array',
             'role_ids.*' => 'exists:roles,id',
+            'business_id' => 'sometimes|nullable|exists:businesses,id',
         ];
     }
 }
