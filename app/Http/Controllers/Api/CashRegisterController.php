@@ -12,7 +12,7 @@ class CashRegisterController extends Controller
 {
     public function current()
     {
-        $openRegister = Auth::user()->business->cashRegisters()->where('status', 'open')->first();
+        $openRegister = Auth::user()->business->cashRegisters()->where('status', 'open')->where('opened_by', Auth::id())->first();
         if ($openRegister) {
             // total_in_cash: Monto inicial + efectivo de ventas
             $openRegister->total_in_cash = $openRegister->initial_amount + $openRegister->cash_sales_amount;
