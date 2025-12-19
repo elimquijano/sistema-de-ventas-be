@@ -66,9 +66,9 @@ class CreditController extends Controller
 
         // If credit is paid, ensure the related sale is also marked as paid.
         if ($credit->status === 'paid') {
-            $credit->sale()->update(['payment_status' => 'paid']);
+            $credit->sale()->update(['status' => 'completed']);
         } else {
-            $credit->sale()->update(['payment_status' => 'pending']);
+            $credit->sale()->update(['status' => 'pending']);
         }
 
         return response()->json($credit);
@@ -90,7 +90,7 @@ class CreditController extends Controller
 
             if ($credit->pending_amount <= 0) {
                 $credit->update(['status' => 'paid']);
-                $credit->sale()->update(['payment_status' => 'paid']);
+                $credit->sale()->update(['status' => 'completed']);
             }
         });
 

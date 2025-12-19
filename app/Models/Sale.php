@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Str;
 
 class Sale extends Model
 {
@@ -14,6 +15,7 @@ class Sale extends Model
     {
         parent::boot();
         static::creating(function ($sale) {
+            $sale->uuid = Str::uuid();
             if (!$sale->sale_number) {
                 $latestId = static::where('business_id', $sale->business_id)->latest('id')->value('id') ?? 0;
                 $sale->sale_number = 'V-' . str_pad($latestId + 1, 6, '0', STR_PAD_LEFT);
@@ -33,6 +35,12 @@ class Sale extends Model
     {
         return $this->hasMany(SaleItem::class);
     }
+
+    public function payments()
+    {
+        return $this->hasMany(SalePayment::class);
+    }
+    
     public function credit()
     {
         return $this->hasOne(Credit::class);

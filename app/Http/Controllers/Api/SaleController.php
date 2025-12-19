@@ -7,19 +7,18 @@ use App\Models\Sale;
 use App\Models\Product;
 use App\Models\Service;
 use App\Models\CashRegister;
-use App\Models\Expense;
+use App\Models\SalePayment;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Gate;
-use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\ValidationException;
 use Barryvdh\DomPDF\Facade\Pdf;
 
 class SaleController extends Controller
 {
     public function index(Request $request)
     {
-        $query = Auth::user()->business->sales()->with(['items', 'creator', 'business']);
+        $query = Auth::user()->business->sales()->with(['items', 'creator', 'business', 'payments']);
 
         if ($request->filled('search')) {
             $searchTerm = $request->search;
@@ -28,14 +27,27 @@ class SaleController extends Controller
                     ->orWhere('customer_name', 'like', "%{$searchTerm}%");
             });
         }
-        if ($request->filled('payment_method')) {
-            $query->where('payment_method', $request->payment_method);
-        }
-        if ($request->filled('payment_status')) {
-            $query->where('payment_status', $request->payment_status);
-        }
+        
         if ($request->filled('date')) {
             $query->whereDate('created_at', $request->date);
+        }
+
+        if ($request->filled('status')) {
+            $query->where('status', $request->status);
+        }
+
+        if ($request->filled('payment_method')) {
+            $query->whereHas('payments', function ($q) use ($request) {
+                $q->where('payment_method', $request->payment_method);
+            });
+        }
+
+        if ($request->filled('created_by')) {
+            $query->where('created_by', $request->created_by);
+        }
+
+        if ($request->filled('cash_register_id')) {
+            $query->where('cash_register_id', $request->cash_register_id);
         }
 
         $sales = $query->latest()->paginate($request->get('per_page', 15));
@@ -48,17 +60,17 @@ class SaleController extends Controller
         $business = Auth::user()->business;
         $validated = $request->validate([
             'customer_name' => 'required|string|max:255',
-            'payment_method' => 'required|in:cash,credit,yape,discount',
             'items' => 'required|array|min:1',
             'items.*.id' => 'required|integer',
             'items.*.type' => 'required|string|in:product,service',
             'items.*.quantity' => 'required|integer|min:1',
-            'yape_amount' => 'nullable|numeric|min:0',
-            'yape_name' => 'nullable|string|max:255',
-            'received_amount' => 'nullable|numeric|min:0',
+            'payments' => 'required|array|min:1',
+            'payments.*.payment_method' => 'required|string|in:cash,credit,yape,plin,card,transfer,discount',
+            'payments.*.amount' => 'required|numeric|min:0',
+            'payments.*.reference' => 'nullable|string|max:255',
         ]);
 
-        $sale = DB::transaction(function () use ($validated, $business, $request) {
+        $sale = DB::transaction(function () use ($validated, $business) {
             $cashRegister = $business->cashRegisters()->where('status', 'open')->firstOrFail();
 
             $totalAmount = 0;
@@ -67,21 +79,23 @@ class SaleController extends Controller
                 $item = $modelClass::findOrFail($itemData['id']);
                 $totalAmount += $item->price * $itemData['quantity'];
             }
+            
+            $totalPaid = collect($validated['payments'])->sum('amount');
 
-            $paymentMethod = $validated['payment_method'];
-            $yapeAmount = $request->yape_amount ?? 0;
-
-            if ($paymentMethod === 'yape' && $yapeAmount < $totalAmount) {
-                $paymentMethod = 'cash+yape';
+            if (bccomp($totalAmount, $totalPaid, 2) !== 0) {
+                throw ValidationException::withMessages([
+                    'payments' => 'La suma de los pagos (' . $totalPaid . ') no coincide con el monto total de la venta (' . $totalAmount . ').'
+                ]);
             }
+
+            $hasCredit = collect($validated['payments'])->contains('payment_method', 'credit');
 
             $sale = $business->sales()->create([
                 'customer_name' => $validated['customer_name'],
-                'payment_method' => $paymentMethod,
-                'payment_status' => $validated['payment_method'] === 'credit' ? 'pending' : 'paid',
                 'created_by' => Auth::id(),
                 'cash_register_id' => $cashRegister->id,
                 'total_amount' => $totalAmount,
+                'status' => $hasCredit ? 'pending' : 'completed',
             ]);
 
             foreach ($validated['items'] as $itemData) {
@@ -95,62 +109,40 @@ class SaleController extends Controller
                     $item->decrement('stock', $itemData['quantity']);
                 }
 
-                $totalPrice = $item->price * $itemData['quantity'];
-
                 $sale->items()->create([
                     'item_id' => $item->id,
                     'item_type' => $modelClass,
                     'item_name' => $item->name,
                     'unit_price' => $item->price,
                     'quantity' => $itemData['quantity'],
-                    'total_price' => $totalPrice,
+                    'total_price' => $item->price * $itemData['quantity'],
                 ]);
             }
 
             $cashRegister->increment('expected_amount', $totalAmount);
+            
+            foreach ($validated['payments'] as $payment) {
+                $sale->payments()->create($payment);
 
-            $receivedAmount = $request->received_amount ?? 0;
-
-            switch ($validated['payment_method']) {
-                case 'cash':
-                    $cashRegister->increment('cash_sales_amount', $totalAmount);
-                    break;
-                case 'yape':
-                    if ($yapeAmount < $totalAmount) {
-                        $cashRegister->increment('cash_sales_amount', $totalAmount - $yapeAmount);
-                    }
-                    break;
-                case 'discount':
-                    $discount = $totalAmount - $receivedAmount;
-                    if ($discount > 0) {
-                        Expense::create([
-                            'business_id' => $business->id,
-                            'created_by' => Auth::id(),
-                            'amount' => $discount,
-                            'description' => 'Descuento en venta ' . $sale->id,
-                            'expense_date' => now(),
-                        ]);
-                    }
-                    $cashRegister->increment('cash_sales_amount', $receivedAmount);
-                    break;
+                if ($payment['payment_method'] === 'cash') {
+                    $cashRegister->increment('cash_sales_amount', $payment['amount']);
+                }
+                
+                if ($payment['payment_method'] === 'credit') {
+                    $business->credits()->create([
+                        'sale_id' => $sale->id,
+                        'customer_name' => $sale->customer_name,
+                        'total_amount' => $payment['amount'],
+                        'pending_amount' => $payment['amount'],
+                        'due_date' => now()->addDays(30),
+                    ]);
+                }
             }
-
-            if ($validated['payment_method'] === 'credit') {
-                $business->credits()->create([
-                    'sale_id' => $sale->id,
-                    'customer_name' => $sale->customer_name,
-                    'total_amount' => $totalAmount,
-                    'pending_amount' => $totalAmount,
-                    'due_date' => now()->addDays(30),
-                ]);
-            }
-
-            $sale->save();
 
             return $sale;
         });
 
-        return response()->json($sale->load('items'), 201);
+        return response()->json($sale->load('items', 'payments'), 201);
     }
 
     public function show(Sale $sale)
@@ -161,19 +153,43 @@ class SaleController extends Controller
     public function destroy(Sale $sale)
     {
         DB::transaction(function () use ($sale) {
+            // Revert cash register amounts
             if ($sale->cashRegister) {
                 $sale->cashRegister->decrement('expected_amount', $sale->total_amount);
-            }
-            if ($sale->payment_method === 'cash' && $sale->cashRegister) {
-                $sale->cashRegister->decrement('cash_sales_amount', $sale->total_amount);
-            }
-            foreach ($sale->items as $item) {
-                if ($item->item_type === Product::class) {
-                    $item->item->increment('stock', $item->quantity);
+
+                foreach ($sale->payments as $payment) {
+                    if ($payment->payment_method === 'cash') {
+                        $sale->cashRegister->decrement('cash_sales_amount', $payment->amount);
+                    }
                 }
             }
+
+            // Delete associated credit if exists
+            if ($sale->credit) {
+                $sale->credit->delete();
+            }
+
+            // Restore stock for products
+            foreach ($sale->items as $item) {
+                if ($item->item_type === Product::class) {
+                    // The 'item' relationship might not be loaded, so load it if necessary
+                    $product = $item->item ?? Product::find($item->item_id);
+                    if ($product) {
+                        $product->increment('stock', $item->quantity);
+                    }
+                }
+            }
+            
+            // Delete payment records
+            $sale->payments()->delete();
+            
+            // Delete sale items
+            $sale->items()->delete();
+
+            // Delete the sale
             $sale->delete();
         });
+
         return response()->json(null, 204);
     }
 
@@ -207,7 +223,24 @@ class SaleController extends Controller
 
         $sale->load('items', 'business', 'creator');
 
-        $pdf = Pdf::loadView('pdf.sale_receipt', compact('sale'));
+        $business = $sale->business;
+
+        $pdf = Pdf::loadView('pdf.sale_receipt', compact('sale', 'business'))
+            ->setPaper([0, 0, 227, 650]);
+
+        return $pdf->stream('receipt-' . $sale->sale_number . '.pdf');
+    }
+
+    public function showPublicReceipt($uuid)
+    {
+        $sale = Sale::where('uuid', $uuid)->firstOrFail();
+
+        $sale->load('items', 'business', 'creator');
+
+        $business = $sale->business;
+
+        $pdf = Pdf::loadView('pdf.sale_receipt', compact('sale', 'business'))
+            ->setPaper([0, 0, 227, 650]);
 
         return $pdf->stream('receipt-' . $sale->sale_number . '.pdf');
     }
