@@ -14,6 +14,12 @@ class UserController extends Controller
     public function index(Request $request)
     {
         $query = User::with('roles');
+        $user = auth()->user();
+
+        // A non-super admin can only see their own business
+        if ($user->business_id) {
+            $query->where('business_id', $user->business_id);
+        }
 
         if ($request->has('search')) {
             $query->search($request->search);
@@ -27,20 +33,24 @@ class UserController extends Controller
             $query->role($request->role);
         }
 
-        $users = $query->paginate($request->get('per_page', 15));
+        $perPage = $this->getPaginationSize($request, $query);
+        $users = $query->paginate($perPage);
 
         return response()->json($users);
     }
 
     public function store(StoreUserRequest $request)
     {
-        $user = User::create([
-            'first_name' => $request->first_name,
-            'last_name' => $request->last_name,
-            'email' => $request->email,
-            'password' => Hash::make($request->password),
-            'status' => $request->status ?? 'active',
-        ]);
+        $creator = auth()->user();
+        $data = $request->validated();
+
+        $data['password'] = Hash::make($data['password']);
+
+        if ($creator->business_id) {
+            $data['business_id'] = $creator->business_id;
+        }
+
+        $user = User::create($data);
 
         if ($request->has('role_ids')) {
             $user->syncRoles($request->role_ids);
@@ -57,6 +67,12 @@ class UserController extends Controller
     public function update(UpdateUserRequest $request, User $user)
     {
         $data = $request->validated();
+        $updater = auth()->user();
+
+        // Prevent non-super-admins from changing the business_id
+        if ($updater->business_id) {
+            unset($data['business_id']);
+        }
 
         if ($request->has('password') && !empty($request->password)) {
             $data['password'] = Hash::make($request->password);

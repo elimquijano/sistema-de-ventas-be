@@ -13,9 +13,12 @@ class ExpenseController extends Controller
 {
     public function index(Request $request)
     {
-        // Gate::authorize('view-any-expense');
+        $user = Auth::user();
+        $query = Expense::query()->with(['category', 'creator']);
 
-        $query = Auth::user()->business->expenses()->with(['category', 'creator']);
+        if ($user->business_id) {
+            $query->where('business_id', $user->business_id);
+        }
 
         // Search by description
         if ($request->filled('search')) {
@@ -35,7 +38,8 @@ class ExpenseController extends Controller
             $query->whereDate('expense_date', '<=', $request->date_to);
         }
 
-        $expenses = $query->latest('expense_date')->paginate($request->get('per_page', 15));
+        $perPage = $this->getPaginationSize($request, $query);
+        $expenses = $query->latest('expense_date')->paginate($perPage);
 
         return response()->json($expenses);
     }
@@ -100,12 +104,18 @@ class ExpenseController extends Controller
      */
     public function getByCategory(Request $request, $categoryId)
     {
-        // Gate::authorize('view-any-expense');
-        $expenses = Auth::user()->business->expenses()
+        $user = Auth::user();
+        $query = Expense::query()
             ->where('category_id', $categoryId)
-            ->with(['category', 'creator']) // Also load creator here
-            ->latest('expense_date')
-            ->paginate(15);
+            ->with(['category', 'creator']);
+
+        if ($user->business_id) {
+            $query->where('business_id', $user->business_id);
+        }
+
+        $perPage = $this->getPaginationSize($request, $query);
+        $expenses = $query->latest('expense_date')->paginate($perPage);
+
         return response()->json($expenses);
     }
 }

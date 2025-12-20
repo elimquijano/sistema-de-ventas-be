@@ -10,9 +10,22 @@ use Illuminate\Support\Facades\Storage;
 
 class ProductController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
-        $products = Auth::user()->business->products()->with('category')->latest()->paginate(15);
+        $user = Auth::user();
+        $query = Product::query()->with('category');
+
+        if ($user->business_id) {
+            $query->where('business_id', $user->business_id);
+        }
+
+        if ($request->filled('search')) {
+            $query->where('name', 'like', '%' . $request->search . '%');
+        }
+
+        $perPage = $this->getPaginationSize($request, $query);
+        $products = $query->latest()->paginate($perPage);
+
         return response()->json($products);
     }
 
@@ -94,24 +107,41 @@ class ProductController extends Controller
         return response()->json($product);
     }
 
-    public function getLowStock()
+    public function getLowStock(Request $request)
     {
-        $products = Auth::user()->business->products()
+        $user = Auth::user();
+        $query = Product::query()
             ->whereColumn('stock', '<=', 'min_stock')
-            ->with('category')
-            ->paginate(15);
+            ->with('category');
+
+        if ($user->business_id) {
+            $query->where('business_id', $user->business_id);
+        }
+
+        $perPage = $this->getPaginationSize($request, $query);
+        $products = $query->paginate($perPage);
+
         return response()->json($products);
     }
 
     public function search(Request $request)
     {
+        $user = Auth::user();
         $term = $request->query('term');
-        $products = Auth::user()->business->products()
-            ->where('name', 'LIKE', "%{$term}%")
-            ->orWhere('barcode', 'LIKE', "%{$term}%")
+        $query = Product::query();
+
+        if ($user->business_id) {
+            $query->where('business_id', $user->business_id);
+        }
+
+        $products = $query->where(function ($q) use ($term) {
+                $q->where('name', 'LIKE', "%{$term}%")
+                  ->orWhere('barcode', 'LIKE', "%{$term}%");
+            })
             ->select('id', 'name', 'cost', 'price', 'stock')
             ->limit(10)
             ->get();
+            
         return response()->json($products);
     }
 }

@@ -12,12 +12,21 @@ class CategoryController extends Controller
 {
     public function index(Request $request)
     {
-        // Gate::authorize('view-any-category');
-        $query = Auth::user()->business->categories();
+        $user = Auth::user();
+        $query = Category::query();
+
+        if ($user->business_id) {
+            $query->where('business_id', $user->business_id);
+        }
+
         if ($request->has('type')) {
             $query->where('type', $request->type);
         }
-        return response()->json($query->get());
+        
+        $perPage = $this->getPaginationSize($request, $query);
+        $categories = $query->paginate($perPage);
+
+        return response()->json($categories);
     }
 
     public function store(Request $request)

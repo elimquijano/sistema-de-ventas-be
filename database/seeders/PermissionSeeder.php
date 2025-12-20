@@ -2,44 +2,69 @@
 
 namespace Database\Seeders;
 
-use App\Models\Module;
-use App\Models\Permission;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\DB;
 
 class PermissionSeeder extends Seeder
 {
     public function run()
     {
+        DB::statement('SET FOREIGN_KEY_CHECKS=0;');
+        DB::table('permissions')->truncate();
+        DB::statement('SET FOREIGN_KEY_CHECKS=1;');
+
         $permissions = [
-            // Dashboard permissions
-            ['name' => 'dashboard.view', 'display_name' => 'Ver Dashboard', 'module' => 'Dashboard', 'type' => 'view'],
-
-            // Users permissions
-            ['name' => 'users.view', 'display_name' => 'Ver Usuarios', 'module' => 'Users', 'type' => 'view'],
-            ['name' => 'users.create', 'display_name' => 'Crear Usuarios', 'module' => 'Users', 'type' => 'create'],
-            ['name' => 'users.edit', 'display_name' => 'Editar Usuarios', 'module' => 'Users', 'type' => 'edit'],
-            ['name' => 'users.delete', 'display_name' => 'Eliminar Usuarios', 'module' => 'Users', 'type' => 'delete'],
-            ['name' => 'users.roles', 'display_name' => 'Gestionar Roles', 'module' => 'Users', 'type' => 'manage'],
-            ['name' => 'users.permissions', 'display_name' => 'Gestionar Permisos', 'module' => 'Users', 'type' => 'manage'],
-
-            // System permissions
-            ['name' => 'system.settings', 'display_name' => 'Configuración del Sistema', 'module' => 'System', 'type' => 'manage'],
-            ['name' => 'system.modules', 'display_name' => 'Gestionar Módulos', 'module' => 'System', 'type' => 'manage'],
+            ['id' => 1, 'name' => 'dashboard.view', 'display_name' => 'Ver Dashboard', 'module' => 'Dashboard', 'module_id' => 1, 'type' => 'view', 'description' => 'Ver Dashboard', 'guard_name' => 'api', 'created_at' => '2025-12-17 22:51:38', 'updated_at' => '2025-12-17 22:51:38'],
+            ['id' => 2, 'name' => 'users.view', 'display_name' => 'Ver Usuarios', 'module' => 'Users', 'module_id' => 3, 'type' => 'view', 'description' => 'Ver Usuarios', 'guard_name' => 'api', 'created_at' => '2025-12-17 22:51:38', 'updated_at' => '2025-12-17 22:51:38'],
+            ['id' => 3, 'name' => 'users.create', 'display_name' => 'Crear Usuarios', 'module' => 'Users', 'module_id' => 3, 'type' => 'create', 'description' => 'Crear Usuarios', 'guard_name' => 'api', 'created_at' => '2025-12-17 22:51:38', 'updated_at' => '2025-12-17 22:51:38'],
+            ['id' => 4, 'name' => 'users.edit', 'display_name' => 'Editar Usuarios', 'module' => 'Users', 'module_id' => 3, 'type' => 'edit', 'description' => 'Editar Usuarios', 'guard_name' => 'api', 'created_at' => '2025-12-17 22:51:38', 'updated_at' => '2025-12-17 22:51:38'],
+            ['id' => 5, 'name' => 'users.delete', 'display_name' => 'Eliminar Usuarios', 'module' => 'Users', 'module_id' => 3, 'type' => 'delete', 'description' => 'Eliminar Usuarios', 'guard_name' => 'api', 'created_at' => '2025-12-17 22:51:38', 'updated_at' => '2025-12-17 22:51:38'],
+            ['id' => 6, 'name' => 'users.roles', 'display_name' => 'Gestionar Roles', 'module' => 'Users', 'module_id' => 3, 'type' => 'manage', 'description' => 'Gestionar Roles', 'guard_name' => 'api', 'created_at' => '2025-12-17 22:51:38', 'updated_at' => '2025-12-17 22:51:38'],
+            ['id' => 7, 'name' => 'users.permissions', 'display_name' => 'Gestionar Permisos', 'module' => 'Users', 'module_id' => 3, 'type' => 'manage', 'description' => 'Gestionar Permisos', 'guard_name' => 'api', 'created_at' => '2025-12-17 22:51:38', 'updated_at' => '2025-12-17 22:51:38'],
+            ['id' => 8, 'name' => 'system.settings', 'display_name' => 'Configuración del Sistema', 'module' => 'System', 'module_id' => 7, 'type' => 'manage', 'description' => 'Configuración del Sistema', 'guard_name' => 'api', 'created_at' => '2025-12-17 22:51:38', 'updated_at' => '2025-12-17 22:51:38'],
+            ['id' => 9, 'name' => 'system.modules', 'display_name' => 'Gestionar Módulos', 'module' => 'System', 'module_id' => 7, 'type' => 'manage', 'description' => 'Gestionar Módulos', 'guard_name' => 'api', 'created_at' => '2025-12-17 22:51:38', 'updated_at' => '2025-12-17 22:51:38'],
+            ['id' => 10, 'name' => 'negocios.view', 'display_name' => 'Ver Negocios', 'module' => 'Negocios', 'module_id' => null, 'type' => 'view', 'description' => 'Ver Negocios', 'guard_name' => 'api', 'created_at' => '2025-12-18 00:40:36', 'updated_at' => '2025-12-18 00:40:36'],
+            ['id' => 11, 'name' => 'negocios.create', 'display_name' => 'Crear Negocios', 'module' => 'Negocios', 'module_id' => null, 'type' => 'create', 'description' => 'Crear Negocios', 'guard_name' => 'api', 'created_at' => '2025-12-18 00:40:36', 'updated_at' => '2025-12-18 00:40:36'],
+            ['id' => 12, 'name' => 'negocios.edit', 'display_name' => 'Editar Negocios', 'module' => 'Negocios', 'module_id' => null, 'type' => 'edit', 'description' => 'Editar Negocios', 'guard_name' => 'api', 'created_at' => '2025-12-18 00:40:36', 'updated_at' => '2025-12-18 00:40:36'],
+            ['id' => 13, 'name' => 'negocios.delete', 'display_name' => 'Eliminar Negocios', 'module' => 'Negocios', 'module_id' => null, 'type' => 'delete', 'description' => 'Eliminar Negocios', 'guard_name' => 'api', 'created_at' => '2025-12-18 00:40:36', 'updated_at' => '2025-12-18 00:40:36'],
+            ['id' => 14, 'name' => 'productos.view', 'display_name' => 'Ver Productos', 'module' => 'Productos', 'module_id' => null, 'type' => 'view', 'description' => 'Ver Productos', 'guard_name' => 'api', 'created_at' => '2025-12-18 00:42:16', 'updated_at' => '2025-12-18 00:42:16'],
+            ['id' => 15, 'name' => 'productos.create', 'display_name' => 'Crear Productos', 'module' => 'Productos', 'module_id' => null, 'type' => 'create', 'description' => 'Crear Productos', 'guard_name' => 'api', 'created_at' => '2025-12-18 00:42:16', 'updated_at' => '2025-12-18 00:42:16'],
+            ['id' => 16, 'name' => 'productos.edit', 'display_name' => 'Editar Productos', 'module' => 'Productos', 'module_id' => null, 'type' => 'edit', 'description' => 'Editar Productos', 'guard_name' => 'api', 'created_at' => '2025-12-18 00:42:16', 'updated_at' => '2025-12-18 00:42:16'],
+            ['id' => 17, 'name' => 'productos.delete', 'display_name' => 'Eliminar Productos', 'module' => 'Productos', 'module_id' => null, 'type' => 'delete', 'description' => 'Eliminar Productos', 'guard_name' => 'api', 'created_at' => '2025-12-18 00:42:16', 'updated_at' => '2025-12-18 00:42:16'],
+            ['id' => 18, 'name' => 'servicios.view', 'display_name' => 'Ver Servicios', 'module' => 'Servicios', 'module_id' => null, 'type' => 'view', 'description' => 'Ver Servicios', 'guard_name' => 'api', 'created_at' => '2025-12-18 00:43:52', 'updated_at' => '2025-12-18 00:43:52'],
+            ['id' => 19, 'name' => 'servicios.create', 'display_name' => 'Crear Servicios', 'module' => 'Servicios', 'module_id' => null, 'type' => 'create', 'description' => 'Crear Servicios', 'guard_name' => 'api', 'created_at' => '2025-12-18 00:43:52', 'updated_at' => '2025-12-18 00:43:52'],
+            ['id' => 20, 'name' => 'servicios.edit', 'display_name' => 'Editar Servicios', 'module' => 'Servicios', 'module_id' => null, 'type' => 'edit', 'description' => 'Editar Servicios', 'guard_name' => 'api', 'created_at' => '2025-12-18 00:43:52', 'updated_at' => '2025-12-18 00:43:52'],
+            ['id' => 21, 'name' => 'servicios.delete', 'display_name' => 'Eliminar Servicios', 'module' => 'Servicios', 'module_id' => null, 'type' => 'delete', 'description' => 'Eliminar Servicios', 'guard_name' => 'api', 'created_at' => '2025-12-18 00:43:52', 'updated_at' => '2025-12-18 00:43:52'],
+            ['id' => 22, 'name' => 'categorias.view', 'display_name' => 'Ver Categorias', 'module' => 'Categorias', 'module_id' => null, 'type' => 'view', 'description' => 'Ver Categorias', 'guard_name' => 'api', 'created_at' => '2025-12-18 00:45:51', 'updated_at' => '2025-12-18 00:45:51'],
+            ['id' => 23, 'name' => 'categorias.create', 'display_name' => 'Crear Categorias', 'module' => 'Categorias', 'module_id' => null, 'type' => 'create', 'description' => 'Crear Categorias', 'guard_name' => 'api', 'created_at' => '2025-12-18 00:45:51', 'updated_at' => '2025-12-18 00:45:51'],
+            ['id' => 24, 'name' => 'categorias.edit', 'display_name' => 'Editar Categorias', 'module' => 'Categorias', 'module_id' => null, 'type' => 'edit', 'description' => 'Editar Categorias', 'guard_name' => 'api', 'created_at' => '2025-12-18 00:45:51', 'updated_at' => '2025-12-18 00:45:51'],
+            ['id' => 25, 'name' => 'categorias.delete', 'display_name' => 'Eliminar Categorias', 'module' => 'Categorias', 'module_id' => null, 'type' => 'delete', 'description' => 'Eliminar Categorias', 'guard_name' => 'api', 'created_at' => '2025-12-18 00:45:51', 'updated_at' => '2025-12-18 00:45:51'],
+            ['id' => 26, 'name' => 'pos.view', 'display_name' => 'Ver POS', 'module' => 'POS', 'module_id' => null, 'type' => 'view', 'description' => 'Ver POS', 'guard_name' => 'api', 'created_at' => '2025-12-18 04:18:22', 'updated_at' => '2025-12-18 04:18:22'],
+            ['id' => 27, 'name' => 'pos.create', 'display_name' => 'Crear POS', 'module' => 'POS', 'module_id' => null, 'type' => 'create', 'description' => 'Crear POS', 'guard_name' => 'api', 'created_at' => '2025-12-18 04:18:22', 'updated_at' => '2025-12-18 04:18:22'],
+            ['id' => 28, 'name' => 'pos.edit', 'display_name' => 'Editar POS', 'module' => 'POS', 'module_id' => null, 'type' => 'edit', 'description' => 'Editar POS', 'guard_name' => 'api', 'created_at' => '2025-12-18 04:18:22', 'updated_at' => '2025-12-18 04:18:22'],
+            ['id' => 29, 'name' => 'pos.delete', 'display_name' => 'Eliminar POS', 'module' => 'POS', 'module_id' => null, 'type' => 'delete', 'description' => 'Eliminar POS', 'guard_name' => 'api', 'created_at' => '2025-12-18 04:18:22', 'updated_at' => '2025-12-18 04:18:22'],
+            ['id' => 30, 'name' => 'ventas.view', 'display_name' => 'Ver Ventas', 'module' => 'Ventas', 'module_id' => null, 'type' => 'view', 'description' => 'Ver Ventas', 'guard_name' => 'api', 'created_at' => '2025-12-19 00:36:45', 'updated_at' => '2025-12-19 00:36:45'],
+            ['id' => 31, 'name' => 'ventas.create', 'display_name' => 'Crear Ventas', 'module' => 'Ventas', 'module_id' => null, 'type' => 'create', 'description' => 'Crear Ventas', 'guard_name' => 'api', 'created_at' => '2025-12-19 00:36:45', 'updated_at' => '2025-12-19 00:36:45'],
+            ['id' => 32, 'name' => 'ventas.edit', 'display_name' => 'Editar Ventas', 'module' => 'Ventas', 'module_id' => null, 'type' => 'edit', 'description' => 'Editar Ventas', 'guard_name' => 'api', 'created_at' => '2025-12-19 00:36:45', 'updated_at' => '2025-12-19 00:36:45'],
+            ['id' => 33, 'name' => 'ventas.delete', 'display_name' => 'Eliminar Ventas', 'module' => 'Ventas', 'module_id' => null, 'type' => 'delete', 'description' => 'Eliminar Ventas', 'guard_name' => 'api', 'created_at' => '2025-12-19 00:36:45', 'updated_at' => '2025-12-19 00:36:45'],
+            ['id' => 34, 'name' => 'compras.view', 'display_name' => 'Ver Compras', 'module' => 'Compras', 'module_id' => null, 'type' => 'view', 'description' => 'Ver Compras', 'guard_name' => 'api', 'created_at' => '2025-12-19 05:29:43', 'updated_at' => '2025-12-19 05:29:43'],
+            ['id' => 35, 'name' => 'compras.create', 'display_name' => 'Crear Compras', 'module' => 'Compras', 'module_id' => null, 'type' => 'create', 'description' => 'Crear Compras', 'guard_name' => 'api', 'created_at' => '2025-12-19 05:29:43', 'updated_at' => '2025-12-19 05:29:43'],
+            ['id' => 36, 'name' => 'compras.edit', 'display_name' => 'Editar Compras', 'module' => 'Compras', 'module_id' => null, 'type' => 'edit', 'description' => 'Editar Compras', 'guard_name' => 'api', 'created_at' => '2025-12-19 05:29:43', 'updated_at' => '2025-12-19 05:29:43'],
+            ['id' => 37, 'name' => 'compras.delete', 'display_name' => 'Eliminar Compras', 'module' => 'Compras', 'module_id' => null, 'type' => 'delete', 'description' => 'Eliminar Compras', 'guard_name' => 'api', 'created_at' => '2025-12-19 05:29:43', 'updated_at' => '2025-12-19 05:29:43'],
+            ['id' => 38, 'name' => 'merma.view', 'display_name' => 'Ver Gastos', 'module' => 'Gastos', 'module_id' => null, 'type' => 'view', 'description' => 'Ver Gastos', 'guard_name' => 'api', 'created_at' => '2025-12-19 05:31:33', 'updated_at' => '2025-12-19 05:31:33'],
+            ['id' => 39, 'name' => 'merma.create', 'display_name' => 'Crear Gastos', 'module' => 'Gastos', 'module_id' => null, 'type' => 'create', 'description' => 'Crear Gastos', 'guard_name' => 'api', 'created_at' => '2025-12-19 05:31:33', 'updated_at' => '2025-12-19 05:31:33'],
+            ['id' => 40, 'name' => 'merma.edit', 'display_name' => 'Editar Gastos', 'module' => 'Gastos', 'module_id' => null, 'type' => 'edit', 'description' => 'Editar Gastos', 'guard_name' => 'api', 'created_at' => '2025-12-19 05:31:33', 'updated_at' => '2025-12-19 05:31:33'],
+            ['id' => 41, 'name' => 'merma.delete', 'display_name' => 'Eliminar Gastos', 'module' => 'Gastos', 'module_id' => null, 'type' => 'delete', 'description' => 'Eliminar Gastos', 'guard_name' => 'api', 'created_at' => '2025-12-19 05:31:33', 'updated_at' => '2025-12-19 05:31:33'],
+            ['id' => 42, 'name' => 'creditos.view', 'display_name' => 'Ver Créditos', 'module' => 'Créditos', 'module_id' => null, 'type' => 'view', 'description' => 'Ver Créditos', 'guard_name' => 'api', 'created_at' => '2025-12-19 05:32:33', 'updated_at' => '2025-12-19 05:33:22'],
+            ['id' => 43, 'name' => 'creditos.create', 'display_name' => 'Crear Créditos', 'module' => 'Créditos', 'module_id' => null, 'type' => 'create', 'description' => 'Crear Créditos', 'guard_name' => 'api', 'created_at' => '2025-12-19 05:32:33', 'updated_at' => '2025-12-19 05:32:57'],
+            ['id' => 44, 'name' => 'creditos.edit', 'display_name' => 'Editar Créditos', 'module' => 'Créditos', 'module_id' => null, 'type' => 'edit', 'description' => 'Editar Créditos', 'guard_name' => 'api', 'created_at' => '2025-12-19 05:32:33', 'updated_at' => '2025-12-19 05:33:15'],
+            ['id' => 45, 'name' => 'creditos.delete', 'display_name' => 'Eliminar Créditos', 'module' => 'Créditos', 'module_id' => null, 'type' => 'delete', 'description' => 'Eliminar Créditos', 'guard_name' => 'api', 'created_at' => '2025-12-19 05:32:33', 'updated_at' => '2025-12-19 05:33:06'],
+            ['id' => 46, 'name' => 'prestamos.view', 'display_name' => 'Ver Préstamos', 'module' => 'Préstamos', 'module_id' => null, 'type' => 'view', 'description' => 'Ver Préstamos', 'guard_name' => 'api', 'created_at' => '2025-12-19 05:35:10', 'updated_at' => '2025-12-19 05:35:10'],
+            ['id' => 47, 'name' => 'prestamos.create', 'display_name' => 'Crear Préstamos', 'module' => 'Préstamos', 'module_id' => null, 'type' => 'create', 'description' => 'Crear Préstamos', 'guard_name' => 'api', 'created_at' => '2025-12-19 05:35:10', 'updated_at' => '2025-12-19 05:35:10'],
+            ['id' => 48, 'name' => 'prestamos.edit', 'display_name' => 'Editar Préstamos', 'module' => 'Préstamos', 'module_id' => null, 'type' => 'edit', 'description' => 'Editar Préstamos', 'guard_name' => 'api', 'created_at' => '2025-12-19 05:35:10', 'updated_at' => '2025-12-19 05:35:10'],
+            ['id' => 49, 'name' => 'prestamos.delete', 'display_name' => 'Eliminar Préstamos', 'module' => 'Préstamos', 'module_id' => null, 'type' => 'delete', 'description' => 'Eliminar Préstamos', 'guard_name' => 'api', 'created_at' => '2025-12-19 05:35:10', 'updated_at' => '2025-12-19 05:35:10'],
         ];
 
-        foreach ($permissions as $permission) {
-            // Buscar el módulo correspondiente
-            $module = Module::where('name', $permission['module'])->first();
-
-            Permission::create([
-                'name' => $permission['name'],
-                'display_name' => $permission['display_name'],
-                'module' => $permission['module'],
-                'module_id' => $module?->id,
-                'type' => $permission['type'],
-                'description' => $permission['display_name'],
-                'guard_name' => 'api',
-            ]);
-        }
+        DB::table('permissions')->insert($permissions);
     }
 }

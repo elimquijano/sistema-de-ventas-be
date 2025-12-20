@@ -15,8 +15,46 @@ use Barryvdh\DomPDF\Facade\Pdf;
 
 class PurchaseController extends Controller
 {
+    public function index(Request $request)
+    {
+        $user = Auth::user();
+        $query = Purchase::query()->with(['items', 'creator']);
+
+        if ($user->business_id) {
+            $query->where('business_id', $user->business_id);
+        }
+
+        if ($request->filled('search')) {
+            $query->where('supplier_name', 'like', '%' . $request->search . '%');
+        }
+
+        if ($request->filled('date_from')) {
+            $query->whereDate('purchase_date', '>=', $request->date_from);
+        }
+        if ($request->filled('date_to')) {
+            $query->whereDate('purchase_date', '<=', $request->date_to);
+        }
+
+        $perPage = $this->getPaginationSize($request, $query);
+        $purchases = $query->latest('purchase_date')->paginate($perPage);
+
+        return response()->json($purchases);
+    }
+
+    public function show(Purchase $purchase)
+    {
+        $user = Auth::user();
+        if ($user->business_id && $purchase->business_id !== $user->business_id) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        return response()->json($purchase->load(['items', 'creator', 'business']));
+    }
+
     public function store(Request $request)
     {
+        $user = Auth::user();
+
         $validated = $request->validate([
             'supplier_name' => 'nullable|string|max:255',
             'purchase_date' => 'required|date',
@@ -28,13 +66,18 @@ class PurchaseController extends Controller
             'items.*.cost' => 'required|numeric|min:0',
             'generate_receipt' => 'boolean',
             'receipt_file' => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:5120',
+            'business_id' => ($user->business_id ? 'nullable' : 'required') . '|exists:businesses,id',
         ]);
 
-        $business = Auth::user()->business;
+        $business = $user->business_id ? $user->business : \App\Models\Business::find($validated['business_id']);
+        if (!$business) {
+            return response()->json(['message' => 'Business not found.'], 404);
+        }
+        
         $totalAmount = 0;
 
         try {
-            $purchase = DB::transaction(function () use ($validated, $business, &$totalAmount) {
+            $purchase = DB::transaction(function () use ($validated, $business, &$totalAmount, $user) {
                 // 1. Calculate total amount
                 foreach ($validated['items'] as $itemData) {
                     $totalAmount += $itemData['quantity'] * $itemData['cost'];
@@ -42,7 +85,7 @@ class PurchaseController extends Controller
 
                 // 2. Create the Purchase record
                 $purchase = $business->purchases()->create([
-                    'created_by' => Auth::id(),
+                    'created_by' => $user->id,
                     'supplier_name' => $validated['supplier_name'],
                     'purchase_date' => $validated['purchase_date'],
                     'total_amount' => $totalAmount,
@@ -53,7 +96,8 @@ class PurchaseController extends Controller
                 foreach ($validated['items'] as $itemData) {
                     $product = null;
                     if (!empty($itemData['id'])) {
-                        $product = Product::find($itemData['id']);
+                        // Ensure product belongs to the correct business
+                        $product = Product::where('id', $itemData['id'])->where('business_id', $business->id)->first();
                     }
 
                     // If product doesn't exist, create it
@@ -101,7 +145,7 @@ class PurchaseController extends Controller
                     'amount' => $totalAmount,
                     'expense_date' => $validated['purchase_date'],
                     'category_id' => $expenseCategory->id,
-                    'created_by' => Auth::id(),
+                    'created_by' => $user->id,
                     'receipt_path' => $receiptPath,
                     'notes' => $validated['notes'],
                 ]);

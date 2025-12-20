@@ -13,8 +13,12 @@ class CreditController extends Controller
 {
     public function index(Request $request)
     {
-        // Gate::authorize('view-any-credit');
-        $query = Auth::user()->business->credits()->with('sale');
+        $user = Auth::user();
+        $query = Credit::query()->with('sale');
+
+        if ($user->business_id) {
+            $query->where('business_id', $user->business_id);
+        }
 
         // Filter by customer name or sale number
         if ($request->filled('search')) {
@@ -32,7 +36,9 @@ class CreditController extends Controller
             $query->where('status', $request->status);
         }
 
-        $credits = $query->latest()->paginate($request->get('per_page', 15));
+        $perPage = $this->getPaginationSize($request, $query);
+        $credits = $query->latest()->paginate($perPage);
+
         return response()->json($credits);
     }
 
@@ -97,14 +103,18 @@ class CreditController extends Controller
         return response()->json($credit);
     }
 
-    public function getPending()
+    public function getPending(Request $request)
     {
-        // Gate::authorize('view-any-credit');
-        $credits = Auth::user()->business->credits()
-            ->where('status', 'pending')
-            ->with('sale')
-            ->latest()
-            ->paginate(15);
+        $user = Auth::user();
+        $query = Credit::query()->where('status', 'pending')->with('sale');
+
+        if ($user->business_id) {
+            $query->where('business_id', $user->business_id);
+        }
+
+        $perPage = $this->getPaginationSize($request, $query);
+        $credits = $query->latest()->paginate($perPage);
+
         return response()->json($credits);
     }
 }

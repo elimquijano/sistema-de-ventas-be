@@ -13,8 +13,12 @@ class LoanController extends Controller
 {
     public function index(Request $request)
     {
-        // Gate::authorize('view-any-loan');
-        $query = Auth::user()->business->loans()->with('creator');
+        $user = Auth::user();
+        $query = Loan::query()->with('creator');
+
+        if ($user->business_id) {
+            $query->where('business_id', $user->business_id);
+        }
 
         // Filter by description
         if ($request->filled('search')) {
@@ -26,7 +30,9 @@ class LoanController extends Controller
             $query->where('status', $request->status);
         }
 
-        $loans = $query->latest()->paginate($request->get('per_page', 15));
+        $perPage = $this->getPaginationSize($request, $query);
+        $loans = $query->latest()->paginate($perPage);
+
         return response()->json($loans);
     }
 

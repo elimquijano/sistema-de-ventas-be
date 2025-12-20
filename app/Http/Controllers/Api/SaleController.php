@@ -18,7 +18,12 @@ class SaleController extends Controller
 {
     public function index(Request $request)
     {
-        $query = Auth::user()->business->sales()->with(['items', 'creator', 'business', 'payments']);
+        $user = Auth::user();
+        $query = Sale::query()->with(['items', 'creator', 'business', 'payments']);
+
+        if ($user->business_id) {
+            $query->where('business_id', $user->business_id);
+        }
 
         if ($request->filled('search')) {
             $searchTerm = $request->search;
@@ -50,7 +55,8 @@ class SaleController extends Controller
             $query->where('cash_register_id', $request->cash_register_id);
         }
 
-        $sales = $query->latest()->paginate($request->get('per_page', 15));
+        $perPage = $this->getPaginationSize($request, $query);
+        $sales = $query->latest()->paginate($perPage);
 
         return response()->json($sales);
     }
@@ -195,23 +201,36 @@ class SaleController extends Controller
 
     public function getDailySales(Request $request)
     {
+        $user = Auth::user();
         $date = $request->query('date', now()->format('Y-m-d'));
-        $sales = Auth::user()->business->sales()
+        $query = Sale::query()
             ->whereDate('created_at', $date)
-            ->with('items', 'creator')
-            ->latest()
-            ->get();
+            ->with('items', 'creator');
+
+        if ($user->business_id) {
+            $query->where('business_id', $user->business_id);
+        }
+
+        $sales = $query->latest()->get();
+
         return response()->json($sales);
     }
 
     public function getMonthlySales(Request $request, $year, $month)
     {
-        $sales = Auth::user()->business->sales()
+        $user = Auth::user();
+        $query = Sale::query()
             ->whereYear('created_at', $year)
             ->whereMonth('created_at', $month)
-            ->with('items', 'creator')
-            ->latest()
-            ->paginate(15);
+            ->with('items', 'creator');
+
+        if ($user->business_id) {
+            $query->where('business_id', $user->business_id);
+        }
+
+        $perPage = $this->getPaginationSize($request, $query);
+        $sales = $query->latest()->paginate($perPage);
+
         return response()->json($sales);
     }
 

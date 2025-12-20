@@ -2,151 +2,46 @@
 
 namespace Database\Seeders;
 
-use App\Models\Module;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\DB;
 
 class ModuleSeeder extends Seeder
 {
     public function run()
     {
-        $modules = [
-            // Dashboard Module
-            [
-                'name' => 'Dashboard',
-                'slug' => 'dashboard',
-                'description' => 'Panel principal del sistema',
-                'icon' => 'DashboardIcon',
-                'type' => 'module',
-                'sort_order' => 1,
-                'show_in_menu' => true,
-                'auto_create_permissions' => false,
-                'children' => [
-                    [
-                        'name' => 'Dashboard Principal',
-                        'slug' => 'dashboard.default',
-                        'description' => 'Vista principal del dashboard',
-                        'icon' => 'DashboardIcon',
-                        'route' => '/dashboard',
-                        'component' => 'BusinessDashboard',
-                        'permission' => 'dashboard.view',
-                        'type' => 'page',
-                        'sort_order' => 1,
-                        'show_in_menu' => true,
-                        'auto_create_permissions' => false,
-                    ],
-                ]
-            ],
+        DB::statement('SET FOREIGN_KEY_CHECKS=0;');
+        DB::table('modules')->truncate();
+        DB::statement('SET FOREIGN_KEY_CHECKS=1;');
 
-            // Users Module
-            [
-                'name' => 'Users',
-                'slug' => 'users',
-                'description' => 'Gestión de usuarios del sistema',
-                'icon' => 'PeopleIcon',
-                'type' => 'module',
-                'sort_order' => 3,
-                'show_in_menu' => true,
-                'auto_create_permissions' => false,
-                'children' => [
-                    [
-                        'name' => 'Lista de Usuarios',
-                        'slug' => 'users.list',
-                        'description' => 'Gestión de usuarios',
-                        'icon' => 'PeopleIcon',
-                        'route' => '/dashboard/users',
-                        'component' => 'Users',
-                        'permission' => 'users.view',
-                        'type' => 'page',
-                        'sort_order' => 1,
-                        'show_in_menu' => true,
-                        'auto_create_permissions' => false,
-                    ],
-                    [
-                        'name' => 'Roles',
-                        'slug' => 'users.roles',
-                        'description' => 'Gestión de roles',
-                        'icon' => 'SecurityIcon',
-                        'route' => '/dashboard/users/roles',
-                        'component' => 'UserRoles',
-                        'permission' => 'users.roles',
-                        'type' => 'page',
-                        'sort_order' => 2,
-                        'show_in_menu' => true,
-                        'auto_create_permissions' => false,
-                    ],
-                    [
-                        'name' => 'Permisos',
-                        'slug' => 'users.permissions',
-                        'description' => 'Gestión de permisos',
-                        'icon' => 'VpnKeyIcon',
-                        'route' => '/dashboard/users/permissions',
-                        'component' => 'UserPermissions',
-                        'permission' => 'users.permissions',
-                        'type' => 'page',
-                        'sort_order' => 3,
-                        'show_in_menu' => true,
-                        'auto_create_permissions' => false,
-                    ],
-                ]
-            ],
-            
-            // System Module
-            [
-                'name' => 'System',
-                'slug' => 'system',
-                'description' => 'Configuración del sistema',
-                'icon' => 'SettingsIcon',
-                'type' => 'module',
-                'sort_order' => 6,
-                'show_in_menu' => true,
-                'auto_create_permissions' => false,
-                'children' => [
-                    [
-                        'name' => 'Módulos',
-                        'slug' => 'system.modules',
-                        'description' => 'Gestión de módulos',
-                        'icon' => 'AppsIcon',
-                        'route' => '/dashboard/modules',
-                        'component' => 'Modules',
-                        'permission' => 'system.modules',
-                        'type' => 'page',
-                        'sort_order' => 1,
-                        'show_in_menu' => true,
-                        'auto_create_permissions' => false,
-                    ],
-                    [
-                        'name' => 'Configuración',
-                        'slug' => 'system.settings',
-                        'description' => 'Configuración general',
-                        'icon' => 'SettingsIcon',
-                        'route' => '/dashboard/settings',
-                        'component' => 'Settings',
-                        'permission' => 'system.settings',
-                        'type' => 'page',
-                        'sort_order' => 2,
-                        'show_in_menu' => true,
-                        'auto_create_permissions' => false,
-                    ],
-                ]
-            ],
+        $modules = [
+            // Parent Modules (no parent_id)
+            ['id' => 1, 'name' => 'Dashboard', 'slug' => 'dashboard', 'description' => 'Panel principal del sistema', 'icon' => 'DashboardIcon', 'route' => null, 'component' => null, 'permission' => null, 'sort_order' => 1, 'parent_id' => null, 'type' => 'module', 'status' => 'active', 'show_in_menu' => 1, 'auto_create_permissions' => 0, 'created_at' => '2025-12-17 22:51:38', 'updated_at' => '2025-12-17 22:51:38'],
+            ['id' => 3, 'name' => 'Users', 'slug' => 'users', 'description' => 'Gestión de usuarios del sistema', 'icon' => 'PeopleIcon', 'route' => null, 'component' => null, 'permission' => null, 'sort_order' => 3, 'parent_id' => null, 'type' => 'module', 'status' => 'active', 'show_in_menu' => 1, 'auto_create_permissions' => 0, 'created_at' => '2025-12-17 22:51:38', 'updated_at' => '2025-12-17 22:51:38'],
+            ['id' => 7, 'name' => 'System', 'slug' => 'system', 'description' => 'Configuración del sistema', 'icon' => 'SettingsIcon', 'route' => null, 'component' => null, 'permission' => null, 'sort_order' => 6, 'parent_id' => null, 'type' => 'module', 'status' => 'active', 'show_in_menu' => 1, 'auto_create_permissions' => 0, 'created_at' => '2025-12-17 22:51:38', 'updated_at' => '2025-12-17 22:51:38'],
+            ['id' => 10, 'name' => 'Administración', 'slug' => 'administracion', 'description' => 'Gestión de Control Interno', 'icon' => null, 'route' => null, 'component' => null, 'permission' => null, 'sort_order' => 3, 'parent_id' => null, 'type' => 'module', 'status' => 'active', 'show_in_menu' => 1, 'auto_create_permissions' => 0, 'created_at' => '2025-12-18 00:39:07', 'updated_at' => '2025-12-18 00:39:07'],
+            ['id' => 15, 'name' => 'Ventas', 'slug' => 'ventaslist', 'description' => 'Gestión de Ventas', 'icon' => null, 'route' => null, 'component' => null, 'permission' => null, 'sort_order' => 4, 'parent_id' => null, 'type' => 'module', 'status' => 'active', 'show_in_menu' => 1, 'auto_create_permissions' => 0, 'created_at' => '2025-12-18 04:17:20', 'updated_at' => '2025-12-18 04:17:20'],
+            ['id' => 18, 'name' => 'Compras', 'slug' => 'comprasmod', 'description' => null, 'icon' => null, 'route' => null, 'component' => null, 'permission' => null, 'sort_order' => 4, 'parent_id' => null, 'type' => 'module', 'status' => 'active', 'show_in_menu' => 1, 'auto_create_permissions' => 0, 'created_at' => '2025-12-19 05:22:09', 'updated_at' => '2025-12-19 05:22:09'],
+            ['id' => 19, 'name' => 'Gastos', 'slug' => 'gastosmod', 'description' => null, 'icon' => null, 'route' => null, 'component' => null, 'permission' => null, 'sort_order' => 5, 'parent_id' => null, 'type' => 'module', 'status' => 'active', 'show_in_menu' => 1, 'auto_create_permissions' => 0, 'created_at' => '2025-12-19 05:24:31', 'updated_at' => '2025-12-19 05:24:31'],
+
+            // Child Modules
+            ['id' => 2, 'name' => 'Dashboard Principal', 'slug' => 'dashboard.default', 'description' => 'Vista principal del dashboard', 'icon' => 'DashboardIcon', 'route' => '/dashboard/business', 'component' => 'BusinessDashboard', 'permission' => 'dashboard.view', 'sort_order' => 1, 'parent_id' => 1, 'type' => 'page', 'status' => 'active', 'show_in_menu' => 1, 'auto_create_permissions' => 0, 'created_at' => '2025-12-17 22:51:38', 'updated_at' => '2025-12-18 00:37:33'],
+            ['id' => 4, 'name' => 'Lista de Usuarios', 'slug' => 'users.list', 'description' => 'Gestión de usuarios', 'icon' => 'PeopleIcon', 'route' => '/dashboard/users', 'component' => 'Users', 'permission' => 'users.view', 'sort_order' => 1, 'parent_id' => 3, 'type' => 'page', 'status' => 'active', 'show_in_menu' => 1, 'auto_create_permissions' => 0, 'created_at' => '2025-12-17 22:51:38', 'updated_at' => '2025-12-17 22:51:38'],
+            ['id' => 5, 'name' => 'Roles', 'slug' => 'users.roles', 'description' => 'Gestión de roles', 'icon' => 'SecurityIcon', 'route' => '/dashboard/users/roles', 'component' => 'UserRoles', 'permission' => 'users.roles', 'sort_order' => 2, 'parent_id' => 3, 'type' => 'page', 'status' => 'active', 'show_in_menu' => 1, 'auto_create_permissions' => 0, 'created_at' => '2025-12-17 22:51:38', 'updated_at' => '2025-12-17 22:51:38'],
+            ['id' => 6, 'name' => 'Permisos', 'slug' => 'users.permissions', 'description' => 'Gestión de permisos', 'icon' => 'VpnKeyIcon', 'route' => '/dashboard/users/permissions', 'component' => 'UserPermissions', 'permission' => 'users.permissions', 'sort_order' => 3, 'parent_id' => 3, 'type' => 'page', 'status' => 'active', 'show_in_menu' => 1, 'auto_create_permissions' => 0, 'created_at' => '2025-12-17 22:51:38', 'updated_at' => '2025-12-17 22:51:38'],
+            ['id' => 8, 'name' => 'Módulos', 'slug' => 'system.modules', 'description' => 'Gestión de módulos', 'icon' => 'AppsIcon', 'route' => '/dashboard/modules', 'component' => 'Modules', 'permission' => 'system.modules', 'sort_order' => 1, 'parent_id' => 7, 'type' => 'page', 'status' => 'active', 'show_in_menu' => 1, 'auto_create_permissions' => 0, 'created_at' => '2025-12-17 22:51:38', 'updated_at' => '2025-12-17 22:51:38'],
+            ['id' => 9, 'name' => 'Configuración', 'slug' => 'system.settings', 'description' => 'Configuración general', 'icon' => 'SettingsIcon', 'route' => '/dashboard/settings', 'component' => 'Settings', 'permission' => 'system.settings', 'sort_order' => 2, 'parent_id' => 7, 'type' => 'page', 'status' => 'active', 'show_in_menu' => 1, 'auto_create_permissions' => 0, 'created_at' => '2025-12-17 22:51:38', 'updated_at' => '2025-12-17 22:51:38'],
+            ['id' => 11, 'name' => 'Negocios', 'slug' => 'negocios', 'description' => 'Gestión de Negocios', 'icon' => 'Business', 'route' => '/dashboard/negocios', 'component' => 'Business', 'permission' => 'negocios.view', 'sort_order' => 1, 'parent_id' => 10, 'type' => 'page', 'status' => 'active', 'show_in_menu' => 1, 'auto_create_permissions' => 1, 'created_at' => '2025-12-18 00:40:35', 'updated_at' => '2025-12-18 00:40:35'],
+            ['id' => 12, 'name' => 'Productos', 'slug' => 'productos', 'description' => 'Gestión de Productos', 'icon' => 'Store', 'route' => '/dashboard/productos', 'component' => 'Products', 'permission' => 'productos.view', 'sort_order' => 3, 'parent_id' => 10, 'type' => 'page', 'status' => 'active', 'show_in_menu' => 1, 'auto_create_permissions' => 1, 'created_at' => '2025-12-18 00:42:16', 'updated_at' => '2025-12-18 00:42:16'],
+            ['id' => 13, 'name' => 'Servicios', 'slug' => 'servicios', 'description' => 'Gestión de Servicios', 'icon' => 'Build', 'route' => '/dashboard/servicios', 'component' => 'Services', 'permission' => 'servicios.view', 'sort_order' => 4, 'parent_id' => 10, 'type' => 'page', 'status' => 'active', 'show_in_menu' => 1, 'auto_create_permissions' => 1, 'created_at' => '2025-12-18 00:43:52', 'updated_at' => '2025-12-18 00:43:52'],
+            ['id' => 14, 'name' => 'Categorias', 'slug' => 'categorias', 'description' => 'Gestión de Categorías', 'icon' => 'Menu', 'route' => '/dashboard/categorias', 'component' => 'Categories', 'permission' => 'categorias.view', 'sort_order' => 2, 'parent_id' => 10, 'type' => 'page', 'status' => 'active', 'show_in_menu' => 1, 'auto_create_permissions' => 1, 'created_at' => '2025-12-18 00:45:51', 'updated_at' => '2025-12-18 00:45:51'],
+            ['id' => 16, 'name' => 'POS', 'slug' => 'pos', 'description' => 'Punto de Venta', 'icon' => 'PointOfSale', 'route' => '/dashboard/pos', 'component' => 'PointOfSale', 'permission' => 'pos.view', 'sort_order' => 1, 'parent_id' => 15, 'type' => 'page', 'status' => 'active', 'show_in_menu' => 1, 'auto_create_permissions' => 1, 'created_at' => '2025-12-18 04:18:21', 'updated_at' => '2025-12-18 04:18:21'],
+            ['id' => 17, 'name' => 'Ventas', 'slug' => 'ventas', 'description' => 'Gestión de Ventas', 'icon' => 'Store', 'route' => '/dashboard/ventas', 'component' => 'Sales', 'permission' => 'ventas.view', 'sort_order' => 2, 'parent_id' => 15, 'type' => 'page', 'status' => 'active', 'show_in_menu' => 1, 'auto_create_permissions' => 1, 'created_at' => '2025-12-19 00:36:45', 'updated_at' => '2025-12-19 00:36:45'],
+            ['id' => 21, 'name' => 'Compras', 'slug' => 'compras', 'description' => 'Gestión de Compras', 'icon' => 'Inventory', 'route' => '/dashboard/compras', 'component' => 'Purchases', 'permission' => 'compras.view', 'sort_order' => 1, 'parent_id' => 18, 'type' => 'page', 'status' => 'active', 'show_in_menu' => 1, 'auto_create_permissions' => 1, 'created_at' => '2025-12-19 05:29:43', 'updated_at' => '2025-12-19 05:29:43'],
+            ['id' => 22, 'name' => 'Gastos', 'slug' => 'merma', 'description' => 'Gestión de Gastos', 'icon' => 'Receipt', 'route' => '/dashboard/gastos', 'component' => 'Expenses', 'permission' => 'merma.view', 'sort_order' => 1, 'parent_id' => 19, 'type' => 'page', 'status' => 'active', 'show_in_menu' => 1, 'auto_create_permissions' => 1, 'created_at' => '2025-12-19 05:31:33', 'updated_at' => '2025-12-19 05:31:33'],
+            ['id' => 23, 'name' => 'Créditos', 'slug' => 'creditos', 'description' => 'Gestión de Créditos', 'icon' => 'CreditCard', 'route' => '/dashboard/creditos', 'component' => 'Credits', 'permission' => 'creditos.view', 'sort_order' => 2, 'parent_id' => 19, 'type' => 'page', 'status' => 'active', 'show_in_menu' => 1, 'auto_create_permissions' => 1, 'created_at' => '2025-12-19 05:32:33', 'updated_at' => '2025-12-19 05:33:35'],
+            ['id' => 24, 'name' => 'Préstamos', 'slug' => 'prestamos', 'description' => 'Gestión de prestamos', 'icon' => 'Inventory', 'route' => '/dashboard/prestamos', 'component' => 'Loans', 'permission' => 'prestamos.view', 'sort_order' => 3, 'parent_id' => 19, 'type' => 'page', 'status' => 'active', 'show_in_menu' => 1, 'auto_create_permissions' => 1, 'created_at' => '2025-12-19 05:35:10', 'updated_at' => '2025-12-19 05:35:10'],
         ];
 
-        $this->createModules($modules);
-    }
-
-    private function createModules($modules, $parentId = null)
-    {
-        foreach ($modules as $moduleData) {
-            $children = $moduleData['children'] ?? [];
-            unset($moduleData['children']);
-
-            $moduleData['parent_id'] = $parentId;
-
-            $module = Module::create($moduleData);
-
-            if (!empty($children)) {
-                $this->createModules($children, $module->id);
-            }
-        }
+        DB::table('modules')->insert($modules);
     }
 }

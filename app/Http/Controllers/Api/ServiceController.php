@@ -10,9 +10,22 @@ use Illuminate\Support\Facades\Storage;
 
 class ServiceController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
-        $services = Auth::user()->business->services()->with('category')->latest()->paginate(15);
+        $user = Auth::user();
+        $query = Service::query()->with('category');
+
+        if ($user->business_id) {
+            $query->where('business_id', $user->business_id);
+        }
+
+        if ($request->filled('search')) {
+            $query->where('name', 'like', '%' . $request->search . '%');
+        }
+
+        $perPage = $this->getPaginationSize($request, $query);
+        $services = $query->latest()->paginate($perPage);
+
         return response()->json($services);
     }
 

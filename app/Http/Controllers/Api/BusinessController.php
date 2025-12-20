@@ -12,13 +12,20 @@ use Carbon\Carbon;
 class BusinessController extends Controller
 {
     // ... (index, store, show, update, destroy methods remain the same)
-    public function index()
+    public function index(Request $request)
     {
         $user = Auth::user();
-        if ($user->can('view-any-business')) {
-            return Business::with('owner')->paginate(15);
+        $query = Business::query()->with('owner');
+
+        // A non-super admin can only see their own business
+        if ($user->business_id) {
+            $query->where('id', $user->business_id);
         }
-        return Business::where('id', $user->business_id)->with('owner')->paginate(15);
+
+        $perPage = $this->getPaginationSize($request, $query);
+        $businesses = $query->paginate($perPage);
+
+        return response()->json($businesses);
     }
 
     public function store(Request $request)
@@ -34,7 +41,6 @@ class BusinessController extends Controller
         ]);
 
         $business = Business::create($validated + ['user_id' => Auth::id()]);
-        Auth::user()->update(['business_id' => $business->id]);
 
         return response()->json($business, 201);
     }

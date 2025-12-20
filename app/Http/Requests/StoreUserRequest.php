@@ -21,6 +21,7 @@ class StoreUserRequest extends FormRequest
             'status' => 'sometimes|in:active,inactive,pending',
             'role_ids' => 'sometimes|array',
             'role_ids.*' => 'exists:roles,id',
+            'business_id' => 'nullable|exists:businesses,id',
         ];
     }
 }
