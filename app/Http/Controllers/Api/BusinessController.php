@@ -4,10 +4,10 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Business;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
-use Carbon\Carbon;
 
 class BusinessController extends Controller
 {
@@ -57,18 +57,20 @@ class BusinessController extends Controller
             'description' => 'nullable|string',
             'address' => 'nullable|string',
             'phone' => 'nullable|string|max:20',
-            'email' => 'nullable|email|max:255|unique:businesses,email,' . $business->id,
+            'email' => 'nullable|email|max:255|unique:businesses,email,'.$business->id,
             'tax_id' => 'nullable|string|max:50',
             'currency' => 'sometimes|required|in:PEN,USD',
         ]);
 
         $business->update($validated);
+
         return response()->json($business);
     }
 
     public function destroy(Business $business)
     {
         $business->delete();
+
         return response()->json(null, 204);
     }
 
@@ -155,59 +157,109 @@ class BusinessController extends Controller
         $dateColumn = $type === 'sales' ? 'created_at' : 'expense_date';
         $amountColumn = $type === 'sales' ? 'total_amount' : 'amount';
 
+        // Format dates correctly for comparison
+        $start = $type === 'expenses' ? $startDate->toDateString() : $startDate->toDateTimeString();
+        $end = $type === 'expenses' ? $endDate->toDateString() : $endDate->toDateTimeString();
+
         $query = DB::table($table)
             ->where('business_id', $business->id)
-            ->whereBetween($dateColumn, [$startDate, $endDate]);
+            ->whereBetween($dateColumn, [$start, $end]);
 
-        $selectSQL = "";
-        $groupBySQL = "";
+        $selectSQL = '';
+        $groupBySQL = '';
         $orderBySQL = "MIN({$dateColumn})";
 
         switch ($period) {
             case 'day':
                 $selectSQL = "DATE_FORMAT({$dateColumn}, '%H:00') as label, SUM({$amountColumn}) as value";
-                $groupBySQL = "label";
+                $groupBySQL = 'label';
                 break;
             case 'week':
                 $selectSQL = "DATE_FORMAT({$dateColumn}, '%W') as label, SUM({$amountColumn}) as value";
-                $groupBySQL = "label";
+                $groupBySQL = 'label';
                 break;
             case 'month':
                 $selectSQL = "DATE_FORMAT({$dateColumn}, '%d %b') as label, SUM({$amountColumn}) as value";
-                $groupBySQL = "label";
+                $groupBySQL = 'label';
                 break;
             case 'year':
                 $selectSQL = "DATE_FORMAT({$dateColumn}, '%M') as label, SUM({$amountColumn}) as value";
-                $groupBySQL = "label";
+                $groupBySQL = 'label';
                 $orderBySQL = "MIN(MONTH({$dateColumn}))";
                 break;
         }
 
-        return $query->select(DB::raw($selectSQL))
+        $data = $query->select(DB::raw($selectSQL))
             ->groupBy(DB::raw($groupBySQL))
             ->orderBy(DB::raw($orderBySQL), 'asc')
             ->get();
+
+        // Post-process to fill missing dates
+        return $this->fillMissingChartData($data, $period, $startDate, $endDate);
+    }
+
+    private function fillMissingChartData($data, $period, $startDate, $endDate)
+    {
+        $filledData = collect();
+        $currentDate = $startDate->copy();
+
+        while ($currentDate <= $endDate) {
+            $label = '';
+            switch ($period) {
+                case 'day':
+                    $label = $currentDate->format('H:00');
+                    $increment = 'addHour';
+                    break;
+                case 'week':
+                    $label = $currentDate->locale('es')->isoFormat('dddd');
+                    $increment = 'addDay';
+                    break;
+                case 'month':
+                    $label = $currentDate->locale('es')->isoFormat('DD MMM');
+                    $increment = 'addDay';
+                    break;
+                case 'year':
+                    $label = $currentDate->locale('es')->isoFormat('MMMM');
+                    $increment = 'addMonth';
+                    break;
+            }
+
+            // Find matching data or default to 0
+            // Note: DB returns lowercase/localized names due to lc_time_names
+            $existing = $data->first(function ($item) use ($label) {
+                return strtolower($item->label) === strtolower($label);
+            });
+
+            $filledData->push([
+                'label' => $label,
+                'value' => $existing ? $existing->value : 0,
+            ]);
+
+            $currentDate->$increment();
+        }
+
+        return $filledData;
     }
 
     private function getRecentActivities($business)
     {
-        $sales = $business->sales()->latest()->limit(5)->get()->map(function ($sale) {
+        $sales = $business->sales()->latest()->limit(5)->get()->toBase()->map(function ($sale) {
             return [
                 'type' => 'sale',
                 'description' => "Venta #{$sale->sale_number} a {$sale->customer_name}",
                 'amount' => $sale->total_amount,
-                'time' => $sale->created_at->diffForHumans(),
-                'created_at' => $sale->created_at
+                'time' => $sale->created_at->locale('es')->diffForHumans(),
+                'created_at' => $sale->created_at,
             ];
         });
 
-        $expenses = $business->expenses()->latest()->limit(5)->get()->map(function ($expense) {
+        $expenses = $business->expenses()->latest()->limit(5)->get()->toBase()->map(function ($expense) {
             return [
                 'type' => 'expense',
                 'description' => "Gasto: {$expense->description}",
                 'amount' => -$expense->amount,
-                'time' => $expense->created_at->diffForHumans(),
-                'created_at' => $expense->created_at
+                'time' => $expense->created_at->locale('es')->diffForHumans(),
+                'created_at' => $expense->created_at,
             ];
         });
 

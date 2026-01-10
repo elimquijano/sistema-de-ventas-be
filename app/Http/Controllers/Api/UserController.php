@@ -21,6 +21,10 @@ class UserController extends Controller
             $query->where('business_id', $user->business_id);
         }
 
+        if ($request->has('business_id')) {
+            $query->where('business_id', $request->business_id);
+        }
+
         if ($request->has('search')) {
             $query->search($request->search);
         }
