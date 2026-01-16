@@ -84,6 +84,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::apiResource('services', ServiceController::class);
 
     // Caja Registradora
+    Route::get('/cash-registers', [CashRegisterController::class, 'index']);
     Route::get('/cash-registers/current', [CashRegisterController::class, 'current']);
     Route::post('/cash-registers', [CashRegisterController::class, 'store']);
     Route::post('/cash-registers/{cashRegister}/close', [CashRegisterController::class, 'close']);

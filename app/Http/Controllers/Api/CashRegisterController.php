@@ -10,6 +10,36 @@ use Illuminate\Support\Facades\Gate;
 
 class CashRegisterController extends Controller
 {
+    public function index(Request $request)
+    {
+        $query = Auth::user()->business->cashRegisters()->with(['business', 'openedBy', 'closedBy']);
+
+        // Filtro directo por fecha de apertura (YYYY-MM-DD)
+        if ($request->has('opened_at')) {
+            $query->whereDate('opened_at', $request->opened_at);
+        }
+
+        // Filtro directo por fecha de cierre (YYYY-MM-DD)
+        if ($request->has('closed_at')) {
+            $query->whereDate('closed_at', $request->closed_at);
+        }
+
+        // Filtro por estado
+        if ($request->has('status')) {
+            $query->where('status', $request->status);
+        }
+
+        // Filtro por usuario que abrió la caja
+        if ($request->has('opened_by')) {
+            $query->where('opened_by', $request->opened_by);
+        }
+
+        // Ordenar por fecha de apertura descendente
+        $query->orderBy('opened_at', 'desc');
+
+        return response()->json($query->paginate(10));
+    }
+
     public function current()
     {
         $openRegister = Auth::user()->business->cashRegisters()->where('status', 'open')->where('opened_by', Auth::id())->first();
