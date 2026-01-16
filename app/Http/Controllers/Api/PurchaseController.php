@@ -25,7 +25,11 @@ class PurchaseController extends Controller
         }
 
         if ($request->filled('search')) {
-            $query->where('supplier_name', 'like', '%' . $request->search . '%');
+            $search = $request->search;
+            $query->where(function ($q) use ($search) {
+                $q->where('supplier_name', 'like', '%' . $search . '%')
+                  ->orWhere('purchase_number', 'like', '%' . $search . '%');
+            });
         }
 
         if ($request->filled('date_from')) {
@@ -64,7 +68,6 @@ class PurchaseController extends Controller
             'items.*.name' => 'required|string|max:255',
             'items.*.quantity' => 'required|integer|min:1',
             'items.*.cost' => 'required|numeric|min:0',
-            'generate_receipt' => 'boolean',
             'receipt_file' => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:5120',
             'business_id' => ($user->business_id ? 'nullable' : 'required') . '|exists:businesses,id',
         ]);
@@ -73,11 +76,11 @@ class PurchaseController extends Controller
         if (!$business) {
             return response()->json(['message' => 'Business not found.'], 404);
         }
-        
+
         $totalAmount = 0;
 
         try {
-            $purchase = DB::transaction(function () use ($validated, $business, &$totalAmount, $user) {
+            $purchase = DB::transaction(function () use ($validated, $business, &$totalAmount, $user, $request) {
                 // 1. Calculate total amount
                 foreach ($validated['items'] as $itemData) {
                     $totalAmount += $itemData['quantity'] * $itemData['cost'];
@@ -128,10 +131,10 @@ class PurchaseController extends Controller
 
                 // 5. Handle receipt/invoice
                 $receiptPath = null;
-                if ($validated['generate_receipt'] ?? false) {
-                    $receiptPath = $this->generatePdfReceipt($purchase->load('items'));
-                } elseif ($request->hasFile('receipt_file')) {
+                if ($request->hasFile('receipt_file')) {
                     $receiptPath = $request->file('receipt_file')->store('receipts', 'public');
+                }else {
+                    $receiptPath = $this->generatePdfReceipt($purchase->load('items'));
                 }
 
                 // 6. Create the Expense record
@@ -163,6 +166,65 @@ class PurchaseController extends Controller
         } catch (\Exception $e) {
             Log::error("Error creating purchase: " . $e->getMessage());
             return response()->json(['message' => 'Ocurrió un error al registrar la compra.'], 500);
+        }
+    }
+
+    public function update(Request $request, Purchase $purchase)
+    {
+        $user = Auth::user();
+        if ($user->business_id && $purchase->business_id !== $user->business_id) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $validated = $request->validate([
+            'supplier_name' => 'nullable|string|max:255',
+            'purchase_date' => 'nullable|date',
+            'notes' => 'nullable|string',
+        ]);
+
+        $purchase->update($validated);
+
+        if ($purchase->expense) {
+            $purchase->expense->update([
+                'description' => 'Compra #' . $purchase->purchase_number . ($purchase->supplier_name ? ' a ' . $purchase->supplier_name : ''),
+                'expense_date' => $purchase->purchase_date,
+                'notes' => $purchase->notes,
+            ]);
+        }
+
+        return response()->json($purchase);
+    }
+
+    public function destroy(Purchase $purchase)
+    {
+        $user = Auth::user();
+        if ($user->business_id && $purchase->business_id !== $user->business_id) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        try {
+            DB::transaction(function () use ($purchase) {
+                // Reverse stock
+                foreach ($purchase->items as $item) {
+                    $product = Product::find($item->product_id);
+                    if ($product) {
+                        $product->decrement('stock', $item->quantity);
+                    }
+                }
+
+                // Delete Expense
+                if ($purchase->expense) {
+                    $purchase->expense->delete();
+                }
+
+                // Delete Purchase
+                $purchase->delete();
+            });
+
+            return response()->json(['message' => 'Compra eliminada exitosamente.']);
+        } catch (\Exception $e) {
+            Log::error("Error deleting purchase: " . $e->getMessage());
+            return response()->json(['message' => 'Ocurrió un error al eliminar la compra.'], 500);
         }
     }
 

@@ -1,9 +1,5 @@
 <?php
 
-use App\Http\Controllers\Api\ModuleController;
-use App\Http\Controllers\Api\PermissionController;
-use App\Http\Controllers\Api\RoleController;
-use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BusinessController;
 use App\Http\Controllers\Api\CashRegisterController;
@@ -13,15 +9,20 @@ use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\ExpenseController;
 use App\Http\Controllers\Api\FileController;
 use App\Http\Controllers\Api\LoanController;
+use App\Http\Controllers\Api\ModuleController;
 use App\Http\Controllers\Api\NotificationController;
+use App\Http\Controllers\Api\PermissionController;
 use App\Http\Controllers\Api\ProductController;
+use App\Http\Controllers\Api\PurchaseController;
+use App\Http\Controllers\Api\RoleController;
 use App\Http\Controllers\Api\SaleController;
 use App\Http\Controllers\Api\ServiceController;
+use App\Http\Controllers\Api\UserController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('auth')->group(function () {
     Route::post('login', [AuthController::class, 'login']);
-    //Route::post('register', [AuthController::class, 'register']);
+    // Route::post('register', [AuthController::class, 'register']);
     Route::post('forgot-password', [AuthController::class, 'forgotPassword']);
     Route::post('reset-password', [AuthController::class, 'resetPassword']);
 
@@ -111,8 +112,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/files/upload', [FileController::class, 'upload']);
 
     // Compras
-    Route::post('purchases', [App\Http\Controllers\Api\PurchaseController::class, 'store']);
+    Route::apiResource('purchases', PurchaseController::class);
 
     // Generar recibo de venta en PDF
-    Route::get('sales/{sale}/receipt', [App\Http\Controllers\Api\SaleController::class, 'generateReceipt']);
+    Route::get('sales/{sale}/receipt', [SaleController::class, 'generateReceipt']);
 });
