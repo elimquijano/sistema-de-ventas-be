@@ -63,6 +63,7 @@ class PermissionSeeder extends Seeder
             ['id' => 47, 'name' => 'prestamos.create', 'display_name' => 'Crear Préstamos', 'module' => 'Préstamos', 'module_id' => null, 'type' => 'create', 'description' => 'Crear Préstamos', 'guard_name' => 'api', 'created_at' => '2025-12-19 05:35:10', 'updated_at' => '2025-12-19 05:35:10'],
             ['id' => 48, 'name' => 'prestamos.edit', 'display_name' => 'Editar Préstamos', 'module' => 'Préstamos', 'module_id' => null, 'type' => 'edit', 'description' => 'Editar Préstamos', 'guard_name' => 'api', 'created_at' => '2025-12-19 05:35:10', 'updated_at' => '2025-12-19 05:35:10'],
             ['id' => 49, 'name' => 'prestamos.delete', 'display_name' => 'Eliminar Préstamos', 'module' => 'Préstamos', 'module_id' => null, 'type' => 'delete', 'description' => 'Eliminar Préstamos', 'guard_name' => 'api', 'created_at' => '2025-12-19 05:35:10', 'updated_at' => '2025-12-19 05:35:10'],
+            ['id' => 50, 'name' => 'cajas.view', 'display_name' => 'Ver Cajas', 'module' => 'Cajas', 'module_id' => null, 'type' => 'view', 'description' => 'Ver Cajas', 'guard_name' => 'api', 'created_at' => '2025-01-16 17:23:00', 'updated_at' => '2025-01-16 17:23:00'],
         ];
 
         DB::table('permissions')->insert($permissions);
