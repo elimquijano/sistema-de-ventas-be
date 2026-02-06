@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BusinessController;
+use App\Http\Controllers\Api\ClientController;
 use App\Http\Controllers\Api\CashRegisterController;
 use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\CreditController;
@@ -94,6 +95,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('sales/daily', [SaleController::class, 'getDailySales']); // MODIFICADO
     Route::get('sales/monthly/{year}/{month}', [SaleController::class, 'getMonthlySales']);
     Route::apiResource('sales', SaleController::class);
+
+    // Clients
+    Route::apiResource('clients', ClientController::class);
 
     Route::post('/credits/{credit}/payment', [CreditController::class, 'addPayment']);
     Route::get('credits/pending', [CreditController::class, 'getPending']); // Nueva ruta
