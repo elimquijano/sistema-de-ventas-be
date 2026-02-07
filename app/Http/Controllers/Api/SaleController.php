@@ -8,6 +8,7 @@ use App\Models\Product;
 use App\Models\Service;
 use App\Models\CashRegister;
 use App\Models\SalePayment;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -34,7 +35,10 @@ class SaleController extends Controller
         }
         
         if ($request->filled('date')) {
-            $query->whereDate('created_at', $request->date);
+            $timezone = 'America/Lima';
+            $start = Carbon::createFromFormat('Y-m-d', $request->date, $timezone)->startOfDay()->setTimezone('UTC');
+            $end = Carbon::createFromFormat('Y-m-d', $request->date, $timezone)->endOfDay()->setTimezone('UTC');
+            $query->whereBetween('created_at', [$start, $end]);
         }
 
         if ($request->filled('status')) {
@@ -201,10 +205,16 @@ class SaleController extends Controller
 
     public function getDailySales(Request $request)
     {
+        $timezone = 'America/Lima';
         $user = Auth::user();
-        $date = $request->query('date', now()->format('Y-m-d'));
+        $date = $request->query('date', Carbon::now($timezone)->format('Y-m-d'));
+        
+        // Convert the requested Lima date to UTC boundaries
+        $start = Carbon::createFromFormat('Y-m-d', $date, $timezone)->startOfDay()->setTimezone('UTC');
+        $end = Carbon::createFromFormat('Y-m-d', $date, $timezone)->endOfDay()->setTimezone('UTC');
+
         $query = Sale::query()
-            ->whereDate('created_at', $date)
+            ->whereBetween('created_at', [$start, $end])
             ->with('items', 'creator');
 
         if ($user->business_id) {
@@ -218,10 +228,15 @@ class SaleController extends Controller
 
     public function getMonthlySales(Request $request, $year, $month)
     {
+        $timezone = 'America/Lima';
         $user = Auth::user();
+        
+        // Convert the requested Lima month to UTC boundaries
+        $start = Carbon::createFromDate($year, $month, 1, $timezone)->startOfMonth()->setTimezone('UTC');
+        $end = Carbon::createFromDate($year, $month, 1, $timezone)->endOfMonth()->setTimezone('UTC');
+
         $query = Sale::query()
-            ->whereYear('created_at', $year)
-            ->whereMonth('created_at', $month)
+            ->whereBetween('created_at', [$start, $end])
             ->with('items', 'creator');
 
         if ($user->business_id) {

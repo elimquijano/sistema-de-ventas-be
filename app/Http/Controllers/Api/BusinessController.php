@@ -76,24 +76,39 @@ class BusinessController extends Controller
 
     public function dashboard(Request $request, Business $business)
     {
+        $timezone = 'America/Lima';
         // Set locale to Spanish for date formatting
         DB::statement("SET lc_time_names = 'es_ES'");
 
         $period = $request->input('period', 'week');
-        [$startDate, $endDate] = $this->getDateRange($period);
+        [$startDate, $endDate] = $this->getDateRange($period, $timezone);
 
-        // Stats for top cards (unaffected by period filter)
+        // For queries, we use UTC equivalents of the Lima start/end times
+        $startUTC = $startDate->copy()->setTimezone('UTC');
+        $endUTC = $endDate->copy()->setTimezone('UTC');
+
+        $nowLima = Carbon::now($timezone);
+        $todayLima = Carbon::today($timezone);
+        
+        // Limits for daily/monthly stats in UTC
+        $startTodayUTC = $todayLima->copy()->startOfDay()->setTimezone('UTC');
+        $endTodayUTC = $todayLima->copy()->endOfDay()->setTimezone('UTC');
+        
+        $startMonthUTC = $nowLima->copy()->startOfMonth()->setTimezone('UTC');
+        $endMonthUTC = $nowLima->copy()->endOfMonth()->setTimezone('UTC');
+
+        // Stats for top cards
         $stats = [
-            'daily_sales' => $business->sales()->whereDate('created_at', today())->sum('total_amount'),
-            'monthly_sales' => $business->sales()->whereMonth('created_at', now()->month)->whereYear('created_at', now()->year)->sum('total_amount'),
-            'daily_expenses' => $business->expenses()->whereDate('expense_date', today())->sum('amount'),
-            'monthly_expenses' => $business->expenses()->whereMonth('expense_date', now()->month)->whereYear('expense_date', now()->year)->sum('amount'),
+            'daily_sales' => $business->sales()->whereBetween('created_at', [$startTodayUTC, $endTodayUTC])->sum('total_amount'),
+            'monthly_sales' => $business->sales()->whereBetween('created_at', [$startMonthUTC, $endMonthUTC])->sum('total_amount'),
+            'daily_expenses' => $business->expenses()->whereDate('expense_date', $todayLima)->sum('amount'),
+            'monthly_expenses' => $business->expenses()->whereMonth('expense_date', $nowLima->month)->whereYear('expense_date', $nowLima->year)->sum('amount'),
             'products_low_stock' => $business->products()->whereColumn('stock', '<=', 'min_stock')->count(),
             'pending_credits' => $business->credits()->where('status', 'pending')->count(),
             'cash_in_register' => $business->cashRegisters()->where('status', 'open')->sum(DB::raw('initial_amount + cash_sales_amount')),
         ];
 
-        // Data for charts (affected by period filter)
+        // Data for charts
         $salesData = $this->getChartData($business, 'sales', $period, $startDate, $endDate);
         $expensesData = $this->getChartData($business, 'expenses', $period, $startDate, $endDate);
 
@@ -106,17 +121,17 @@ class BusinessController extends Controller
             ->join('sales', 'sale_items.sale_id', '=', 'sales.id')
             ->select('sale_items.item_name as name', DB::raw('SUM(sale_items.quantity) as quantity'), DB::raw('SUM(sale_items.total_price) as revenue'))
             ->where('sales.business_id', $business->id)
-            ->where('sales.created_at', '>=', now()->subDays(30))
+            ->where('sales.created_at', '>=', $nowLima->copy()->subDays(30)->setTimezone('UTC'))
             ->where('sale_items.item_type', 'App\\Models\\Product')
             ->groupBy('sale_items.item_name')->orderBy('revenue', 'desc')->limit(5)->get();
 
         // Recent activities
-        $recentActivities = $this->getRecentActivities($business);
+        $recentActivities = $this->getRecentActivities($business, $timezone);
 
         // Cash register status
         $cashRegistersToday = $business->cashRegisters()
             ->with('openedBy:id,first_name,last_name') // Eager load user info
-            ->whereDate('opened_at', today())
+            ->whereBetween('opened_at', [$startTodayUTC, $endTodayUTC])
             ->orderBy('opened_at', 'desc')
             ->get();
 
@@ -136,30 +151,35 @@ class BusinessController extends Controller
         ]);
     }
 
-    private function getDateRange($period)
+    private function getDateRange($period, $timezone = 'UTC')
     {
+        $now = Carbon::now($timezone);
+
         switch ($period) {
             case 'day':
-                return [now()->startOfDay(), now()->endOfDay()];
+                return [$now->copy()->startOfDay(), $now->copy()->endOfDay()];
             case 'month':
-                return [now()->startOfMonth(), now()->endOfMonth()];
+                return [$now->copy()->startOfMonth(), $now->copy()->endOfMonth()];
             case 'year':
-                return [now()->startOfYear(), now()->endOfYear()];
+                return [$now->copy()->startOfYear(), $now->copy()->endOfYear()];
             case 'week':
             default:
-                return [now()->startOfWeek(Carbon::MONDAY), now()->endOfWeek(Carbon::SUNDAY)];
+                return [$now->copy()->startOfWeek(Carbon::MONDAY), $now->copy()->endOfWeek(Carbon::SUNDAY)];
         }
     }
 
     private function getChartData($business, $type, $period, $startDate, $endDate)
     {
         $table = $type === 'sales' ? 'sales' : 'expenses';
-        $dateColumn = $type === 'sales' ? 'created_at' : 'expense_date';
+        $dateColumn = 'created_at'; // Siempre usamos created_at para tener precisión de tiempo (horas/mins)
         $amountColumn = $type === 'sales' ? 'total_amount' : 'amount';
 
-        // Format dates correctly for comparison
-        $start = $type === 'expenses' ? $startDate->toDateString() : $startDate->toDateTimeString();
-        $end = $type === 'expenses' ? $endDate->toDateString() : $endDate->toDateTimeString();
+        // Filtramos usando rangos UTC para la columna TIMESTAMP
+        $start = $startDate->copy()->setTimezone('UTC')->toDateTimeString();
+        $end = $endDate->copy()->setTimezone('UTC')->toDateTimeString();
+
+        // Para etiquetas y agrupación, ajustamos el TIMESTAMP de UTC a Lima (-5 horas)
+        $dbDateExpr = "DATE_SUB(created_at, INTERVAL 5 HOUR)";
 
         $query = DB::table($table)
             ->where('business_id', $business->id)
@@ -167,25 +187,25 @@ class BusinessController extends Controller
 
         $selectSQL = '';
         $groupBySQL = '';
-        $orderBySQL = "MIN({$dateColumn})";
+        $orderBySQL = "MIN({$dbDateExpr})";
 
         switch ($period) {
             case 'day':
-                $selectSQL = "DATE_FORMAT({$dateColumn}, '%H:00') as label, SUM({$amountColumn}) as value";
+                $selectSQL = "DATE_FORMAT({$dbDateExpr}, '%H:00') as label, SUM({$amountColumn}) as value";
                 $groupBySQL = 'label';
                 break;
             case 'week':
-                $selectSQL = "DATE_FORMAT({$dateColumn}, '%W') as label, SUM({$amountColumn}) as value";
+                $selectSQL = "DATE_FORMAT({$dbDateExpr}, '%W') as label, SUM({$amountColumn}) as value";
                 $groupBySQL = 'label';
                 break;
             case 'month':
-                $selectSQL = "DATE_FORMAT({$dateColumn}, '%d %b') as label, SUM({$amountColumn}) as value";
+                $selectSQL = "DATE_FORMAT({$dbDateExpr}, '%d %b') as label, SUM({$amountColumn}) as value";
                 $groupBySQL = 'label';
                 break;
             case 'year':
-                $selectSQL = "DATE_FORMAT({$dateColumn}, '%M') as label, SUM({$amountColumn}) as value";
+                $selectSQL = "DATE_FORMAT({$dbDateExpr}, '%M') as label, SUM({$amountColumn}) as value";
                 $groupBySQL = 'label';
-                $orderBySQL = "MIN(MONTH({$dateColumn}))";
+                $orderBySQL = "MIN(MONTH({$dbDateExpr}))";
                 break;
         }
 
@@ -215,7 +235,8 @@ class BusinessController extends Controller
                     $increment = 'addDay';
                     break;
                 case 'month':
-                    $label = $currentDate->locale('es')->isoFormat('DD MMM');
+                    // We strip the trailing dot from Carbon's abbreviated month if it exists
+                    $label = rtrim($currentDate->locale('es')->isoFormat('DD MMM'), '.');
                     $increment = 'addDay';
                     break;
                 case 'year':
@@ -225,9 +246,8 @@ class BusinessController extends Controller
             }
 
             // Find matching data or default to 0
-            // Note: DB returns lowercase/localized names due to lc_time_names
             $existing = $data->first(function ($item) use ($label) {
-                return strtolower($item->label) === strtolower($label);
+                return strtolower(trim($item->label)) === strtolower(trim($label));
             });
 
             $filledData->push([
@@ -241,7 +261,7 @@ class BusinessController extends Controller
         return $filledData;
     }
 
-    private function getRecentActivities($business)
+    private function getRecentActivities($business, $timezone = 'UTC')
     {
         $sales = $business->sales()->latest()->limit(5)->get()->toBase()->map(function ($sale) {
             return [
