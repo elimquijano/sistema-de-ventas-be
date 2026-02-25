@@ -46,7 +46,7 @@ class User extends Authenticatable
 
     public function getInitialsAttribute()
     {
-        return strtoupper(substr($this->first_name, 0, 1) . substr($this->last_name, 0, 1));
+        return strtoupper(substr((string)$this->first_name, 0, 1) . substr((string)$this->last_name, 0, 1));
     }
 
     public function updateLastLogin($ip = null)
