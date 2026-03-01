@@ -26,8 +26,9 @@ class StoreClientRequest extends FormRequest
             'latitude' => 'required|numeric|between:-90,90',
             'longitude' => 'required|numeric|between:-180,180',
             'address' => 'nullable|string',
+            'address_detail' => 'nullable|string',
             'phone' => 'nullable|string|max:50',
-            'image' => 'nullable|image|max:2048', // Max 2MB
+            'image' => 'nullable|image', //|max:2048', // Max 2MB
             'route' => 'nullable', // Can be JSON string or array
             'estimated_time' => 'nullable|string|max:255',
             'approximate_distance' => 'nullable|string|max:255',

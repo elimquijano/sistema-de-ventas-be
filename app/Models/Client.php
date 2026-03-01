@@ -24,6 +24,7 @@ class Client extends Model
         'latitude',
         'longitude',
         'address',
+        'address_detail',
         'image',
         'route',
         'estimated_time',
