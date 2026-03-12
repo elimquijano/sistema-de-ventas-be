@@ -81,7 +81,16 @@ class SaleController extends Controller
         ]);
 
         $sale = DB::transaction(function () use ($validated, $business) {
-            $cashRegister = $business->cashRegisters()->where('status', 'open')->firstOrFail();
+            $cashRegister = $business->cashRegisters()
+                ->where('status', 'open')
+                ->where('opened_by', Auth::id())
+                ->first();
+
+            if (!$cashRegister) {
+                throw ValidationException::withMessages([
+                    'cash_register' => ['No tienes una caja registradora abierta. Por favor, abre una antes de realizar ventas.']
+                ]);
+            }
 
             $totalAmount = 0;
             foreach ($validated['items'] as $itemData) {

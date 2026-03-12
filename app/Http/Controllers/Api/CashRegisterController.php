@@ -54,8 +54,8 @@ class CashRegisterController extends Controller
     public function store(Request $request)
     {
         $business = Auth::user()->business;
-        if ($business->cashRegisters()->where('status', 'open')->exists()) {
-            return response()->json(['message' => 'Ya existe una caja registradora abierta'], 409);
+        if ($business->cashRegisters()->where('status', 'open')->where('opened_by', Auth::id())->exists()) {
+            return response()->json(['message' => 'Ya tienes una caja registradora abierta'], 409);
         }
         $validated = $request->validate([
             'initial_amount' => 'required|numeric|min:0',
@@ -73,6 +73,14 @@ class CashRegisterController extends Controller
 
     public function close(Request $request, CashRegister $cashRegister)
     {
+        if ($cashRegister->business_id !== Auth::user()->business_id) {
+            return response()->json(['message' => 'No autorizado para esta caja.'], 403);
+        }
+
+        if ($cashRegister->status === 'closed') {
+            return response()->json(['message' => 'Esta caja ya está cerrada.'], 400);
+        }
+
         $validated = $request->validate(['final_amount' => 'required|numeric|min:0']);
 
         // expected_amount ya está actualizado por las ventas
@@ -91,6 +99,10 @@ class CashRegisterController extends Controller
 
     public function report(CashRegister $cashRegister)
     {
+        if ($cashRegister->business_id !== Auth::user()->business_id) {
+            return response()->json(['message' => 'No autorizado para esta caja.'], 403);
+        }
+
         // Calcular report_current_cash (efectivo actual en caja)
         $cashRegister->report_current_cash = $cashRegister->initial_amount + $cashRegister->cash_sales_amount;
 
