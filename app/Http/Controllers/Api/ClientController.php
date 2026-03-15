@@ -19,8 +19,24 @@ class ClientController extends Controller
         // Filtrar por el negocio del usuario actual
         $query = Client::query()->where('business_id', $user->business_id);
 
-        if ($request->has('search')) {
-            $query->where('name', 'like', '%' . $request->search . '%');
+        if ($request->filled('search')) {
+            $searchTerm = $request->search;
+            $query->where(function($q) use ($searchTerm) {
+                $q->where('name', 'like', '%' . $searchTerm . '%')
+                  ->orWhere('phone', 'like', '%' . $searchTerm . '%');
+            });
+        }
+
+        if ($request->filled('phone')) {
+            $query->where('phone', $request->phone);
+        }
+
+        if ($request->filled('name')) {
+            $query->where('name', 'like', '%' . $request->name . '%');
+        }
+
+        if ($request->filled('email')) {
+            $query->where('email', 'like', '%' . $request->email . '%');
         }
 
         $perPage = $request->get('per_page', 15);

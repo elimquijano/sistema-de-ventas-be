@@ -94,6 +94,9 @@ Route::middleware('auth:sanctum')->group(function () {
     // Ventas y Créditos
     Route::get('sales/daily', [SaleController::class, 'getDailySales']); // MODIFICADO
     Route::get('sales/monthly/{year}/{month}', [SaleController::class, 'getMonthlySales']);
+    Route::post('sales/quick-order', [SaleController::class, 'quickOrder']);
+    Route::post('sales/{sale}/confirm-delivery', [SaleController::class, 'confirmDelivery']);
+    Route::post('sales/{sale}/cancel', [SaleController::class, 'cancel']);
     Route::apiResource('sales', SaleController::class);
 
     // Clients

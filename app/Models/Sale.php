@@ -31,6 +31,14 @@ class Sale extends Model
     {
         return $this->belongsTo(User::class, 'created_by');
     }
+    public function client()
+    {
+        return $this->belongsTo(Client::class);
+    }
+    public function rider()
+    {
+        return $this->belongsTo(User::class, 'rider_id');
+    }
     public function items()
     {
         return $this->hasMany(SaleItem::class);

@@ -99,8 +99,8 @@ class BusinessController extends Controller
 
         // Stats for top cards
         $stats = [
-            'daily_sales' => $business->sales()->whereBetween('created_at', [$startTodayUTC, $endTodayUTC])->sum('total_amount'),
-            'monthly_sales' => $business->sales()->whereBetween('created_at', [$startMonthUTC, $endMonthUTC])->sum('total_amount'),
+            'daily_sales' => $business->sales()->where('status', 'completed')->whereBetween('created_at', [$startTodayUTC, $endTodayUTC])->sum('total_amount'),
+            'monthly_sales' => $business->sales()->where('status', 'completed')->whereBetween('created_at', [$startMonthUTC, $endMonthUTC])->sum('total_amount'),
             'daily_expenses' => $business->expenses()->whereDate('expense_date', $todayLima)->sum('amount'),
             'monthly_expenses' => $business->expenses()->whereMonth('expense_date', $nowLima->month)->whereYear('expense_date', $nowLima->year)->sum('amount'),
             'products_low_stock' => $business->products()->whereColumn('stock', '<=', 'min_stock')->count(),
@@ -121,6 +121,7 @@ class BusinessController extends Controller
             ->join('sales', 'sale_items.sale_id', '=', 'sales.id')
             ->select('sale_items.item_name as name', DB::raw('SUM(sale_items.quantity) as quantity'), DB::raw('SUM(sale_items.total_price) as revenue'))
             ->where('sales.business_id', $business->id)
+            ->where('sales.status', 'completed')
             ->where('sales.created_at', '>=', $nowLima->copy()->subDays(30)->setTimezone('UTC'))
             ->where('sale_items.item_type', 'App\\Models\\Product')
             ->groupBy('sale_items.item_name')->orderBy('revenue', 'desc')->limit(5)->get();
@@ -184,6 +185,10 @@ class BusinessController extends Controller
         $query = DB::table($table)
             ->where('business_id', $business->id)
             ->whereBetween($dateColumn, [$start, $end]);
+
+        if ($type === 'sales') {
+            $query->where('status', 'completed');
+        }
 
         $selectSQL = '';
         $groupBySQL = '';
