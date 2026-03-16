@@ -19,6 +19,7 @@ use App\Http\Controllers\Api\RoleController;
 use App\Http\Controllers\Api\SaleController;
 use App\Http\Controllers\Api\ServiceController;
 use App\Http\Controllers\Api\UserController;
+use App\Http\Controllers\Api\WhatsAppController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('auth')->group(function () {
@@ -97,6 +98,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('sales/quick-order', [SaleController::class, 'quickOrder']);
     Route::post('sales/{sale}/confirm-delivery', [SaleController::class, 'confirmDelivery']);
     Route::post('sales/{sale}/cancel', [SaleController::class, 'cancel']);
+    Route::post('sales/{sale}/whatsapp-resend', [WhatsAppController::class, 'resendSaleMessage']);
     Route::apiResource('sales', SaleController::class);
 
     // Clients

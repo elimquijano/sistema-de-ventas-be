@@ -40,9 +40,15 @@ class CashRegisterController extends Controller
         return response()->json($query->paginate(10));
     }
 
-    public function current()
+    public function current(Request $request)
     {
-        $openRegister = Auth::user()->business->cashRegisters()->where('status', 'open')->where('opened_by', Auth::id())->first();
+        $targetUserId = $request->input('user_id', Auth::id());
+
+        $openRegister = Auth::user()->business->cashRegisters()
+            ->where('status', 'open')
+            ->where('opened_by', $targetUserId)
+            ->first();
+
         if ($openRegister) {
             // total_in_cash: Monto inicial + efectivo de ventas
             $openRegister->total_in_cash = $openRegister->initial_amount + $openRegister->cash_sales_amount;
@@ -54,19 +60,27 @@ class CashRegisterController extends Controller
     public function store(Request $request)
     {
         $business = Auth::user()->business;
-        if ($business->cashRegisters()->where('status', 'open')->where('opened_by', Auth::id())->exists()) {
-            return response()->json(['message' => 'Ya tienes una caja registradora abierta'], 409);
+        $targetUserId = $request->input('user_id', Auth::id());
+
+        if ($business->cashRegisters()->where('status', 'open')->where('opened_by', $targetUserId)->exists()) {
+            $msg = ($targetUserId == Auth::id()) ? 'Ya tienes una caja registradora abierta' : 'El usuario ya tiene una caja abierta';
+            return response()->json(['message' => $msg], 409);
         }
+
         $validated = $request->validate([
             'initial_amount' => 'required|numeric|min:0',
             'currency' => 'required|string|in:PEN,USD',
+            'user_id' => 'nullable|exists:users,id'
         ]);
-        $register = $business->cashRegisters()->create($validated + [
+
+        $register = $business->cashRegisters()->create([
+            'initial_amount' => $validated['initial_amount'],
+            'currency' => $validated['currency'],
             'opened_at' => now(),
-            'opened_by' => Auth::id(),
+            'opened_by' => $targetUserId,
             'status' => 'open',
             'cash_sales_amount' => 0,
-            'expected_amount' => $validated['initial_amount'], // expected_amount inicia con el monto inicial
+            'expected_amount' => $validated['initial_amount'], 
         ]);
         return response()->json($register, 201);
     }

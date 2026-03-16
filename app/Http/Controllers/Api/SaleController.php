@@ -8,6 +8,7 @@ use App\Models\Product;
 use App\Models\Service;
 use App\Models\CashRegister;
 use App\Models\SalePayment;
+use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -19,9 +20,17 @@ use App\Models\Client;
 use App\Models\Category;
 use App\Models\Expense;
 use Illuminate\Support\Facades\Log;
+use App\Services\WhatsAppService;
 
 class SaleController extends Controller
 {
+    protected $whatsappService;
+
+    public function __construct(WhatsAppService $whatsappService)
+    {
+        $this->whatsappService = $whatsappService;
+    }
+
     /**
      * Crear un pedido rápido para delivery.
      * Busca el cliente por teléfono o lo crea si es nuevo.
@@ -55,6 +64,7 @@ class SaleController extends Controller
                     'phone' => $validated['phone'],
                     'name' => $validated['customer_name'] ?? 'Cliente Nuevo (' . $validated['phone'] . ')',
                     'address' => $validated['address'],
+                    'address_detail' => $validated['notes'] ?? null,
                     'latitude' => $validated['latitude'] ?? 0,
                     'longitude' => $validated['longitude'] ?? 0,
                     'business_id' => $business->id,
@@ -100,23 +110,13 @@ class SaleController extends Controller
             $product->decrement('stock', $validated['quantity']);
 
             // 6. Preparar Mensaje para el Repartidor (WhatsApp)
-            $mapsLink = "https://www.google.com/maps?q={$client->latitude},{$client->longitude}";
-            $whatsappMsg = "🛵 *NUEVO PEDIDO ASIGNADO* 🛵\n"
-                         . "---------------------------\n"
-                         . "👤 *Cliente:* {$client->name}\n"
-                         . "📍 *Dirección:* " . ($validated['address'] ?? $client->address) . "\n"
-                         . "📞 *Teléfono:* {$client->phone}\n"
-                         . "🗺️ *Maps:* {$mapsLink}\n"
-                         . "📦 *Producto:* {$validated['quantity']} x {$product->name}\n"
-                         . "💰 *Total a Cobrar:* S/ " . number_format($validated['total_amount'], 2) . "\n"
-                         . "📝 *Notas:* " . ($validated['notes'] ?? 'Sin notas') . "\n"
-                         . "---------------------------\n"
-                         . "Favor de confirmar al entregar.";
-            
-            Log::info("Mensaje WhatsApp para Rider ID {$validated['rider_id']}:\n" . $whatsappMsg);
+            $whatsappMsg = $this->whatsappService->formatSaleMessage($sale);
 
-            // AQUÍ PUEDES CONECTAR CON TU API DE WHATSAPP:
-            // logicToSendWhatsappToRider($validated['rider_id'], $whatsappMsg);
+            // Buscar teléfono del rider
+            $rider = User::find($validated['rider_id']);
+            if ($rider && $rider->phone) {
+                $this->whatsappService->sendMessage($rider->phone, $whatsappMsg);
+            }
 
             return $sale;
         });
@@ -165,7 +165,7 @@ class SaleController extends Controller
     public function index(Request $request)
     {
         $user = Auth::user();
-        $query = Sale::query()->with(['items', 'creator', 'business', 'payments']);
+        $query = Sale::query()->with(['items', 'client', 'creator', 'business', 'payments']);
 
         if ($user->business_id) {
             $query->where('business_id', $user->business_id);
@@ -178,7 +178,7 @@ class SaleController extends Controller
                     ->orWhere('customer_name', 'like', "%{$searchTerm}%");
             });
         }
-        
+
         if ($request->filled('date')) {
             $date = $request->date;
             $query->whereDate('created_at', $date);
@@ -245,8 +245,8 @@ class SaleController extends Controller
 
         $sale = DB::transaction(function () use ($validated, $business, $isDelivery) {
             // Determinar a qué caja va la venta
-            $targetUserId = ($isDelivery && !empty($validated['rider_id'])) 
-                ? $validated['rider_id'] 
+            $targetUserId = ($isDelivery && !empty($validated['rider_id']))
+                ? $validated['rider_id']
                 : Auth::id();
 
             $cashRegister = $business->cashRegisters()
@@ -255,10 +255,10 @@ class SaleController extends Controller
                 ->first();
 
             if (!$cashRegister) {
-                $errorMessage = ($targetUserId === Auth::id()) 
-                    ? 'No tienes una caja registradora abierta.' 
+                $errorMessage = ($targetUserId === Auth::id())
+                    ? 'No tienes una caja registradora abierta.'
                     : 'El motorizado asignado no tiene una caja abierta.';
-                
+
                 throw ValidationException::withMessages([
                     'cash_register' => [$errorMessage]
                 ]);
@@ -270,7 +270,7 @@ class SaleController extends Controller
                 $item = $modelClass::findOrFail($itemData['id']);
                 $totalAmount += $item->price * $itemData['quantity'];
             }
-            
+
             $payments = $validated['payments'] ?? [];
             $totalPaid = collect($payments)->sum('amount');
 
@@ -324,7 +324,7 @@ class SaleController extends Controller
             // Solo afectar caja si ya está completada o no es delivery fantasma
             if ($sale->status === 'completed' && $cashRegister) {
                 $cashRegister->increment('expected_amount', $totalAmount);
-                
+
                 foreach ($payments as $payment) {
                     $sale->payments()->create($payment);
 
@@ -423,8 +423,8 @@ class SaleController extends Controller
                 ->first();
 
             if (!$cashRegister) {
-                $errorMessage = ($targetUserId === Auth::id()) 
-                    ? 'No tienes una caja registradora abierta para confirmar esta entrega.' 
+                $errorMessage = ($targetUserId === Auth::id())
+                    ? 'No tienes una caja registradora abierta para confirmar esta entrega.'
                     : 'El repartidor asignado no tiene una caja abierta para confirmar esta entrega.';
 
                 throw ValidationException::withMessages([
@@ -529,10 +529,10 @@ class SaleController extends Controller
                     }
                 }
             }
-            
+
             // Delete payment records
             $sale->payments()->delete();
-            
+
             // Delete sale items
             $sale->items()->delete();
 
@@ -547,7 +547,7 @@ class SaleController extends Controller
     {
         $user = Auth::user();
         $date = $request->query('date', Carbon::now()->format('Y-m-d'));
-        
+
         $query = Sale::query()
             ->where('status', '!=', 'cancelled')
             ->whereDate('created_at', $date)
@@ -565,7 +565,7 @@ class SaleController extends Controller
     public function getMonthlySales(Request $request, $year, $month)
     {
         $user = Auth::user();
-        
+
         $query = Sale::query()
             ->where('status', '!=', 'cancelled')
             ->whereYear('created_at', $year)

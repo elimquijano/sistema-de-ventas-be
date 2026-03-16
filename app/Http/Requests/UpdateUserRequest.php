@@ -24,6 +24,7 @@ class UpdateUserRequest extends FormRequest
                 'max:255',
                 Rule::unique('users')->ignore($this->user),
             ],
+            'phone' => 'sometimes|nullable|string|max:20',
             'password' => 'sometimes|nullable|string|min:8',
             'status' => 'sometimes|in:active,inactive,pending',
             'role_ids' => 'sometimes|array',

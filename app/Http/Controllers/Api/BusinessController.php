@@ -60,6 +60,7 @@ class BusinessController extends Controller
             'email' => 'nullable|email|max:255|unique:businesses,email,'.$business->id,
             'tax_id' => 'nullable|string|max:50',
             'currency' => 'sometimes|required|in:PEN,USD',
+            'user_id' => 'sometimes|required|exists:users,id',
         ]);
 
         $business->update($validated);
