@@ -89,6 +89,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/cash-registers', [CashRegisterController::class, 'index']);
     Route::get('/cash-registers/current', [CashRegisterController::class, 'current']);
     Route::post('/cash-registers', [CashRegisterController::class, 'store']);
+    Route::post('/cash-registers/{cashRegister}/add-inflow', [CashRegisterController::class, 'addInflow']);
     Route::post('/cash-registers/{cashRegister}/close', [CashRegisterController::class, 'close']);
     Route::get('/cash-registers/{cashRegister}/report', [CashRegisterController::class, 'report']);
 

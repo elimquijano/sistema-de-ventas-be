@@ -74,7 +74,7 @@ class CreditController extends Controller
         if ($credit->status === 'paid') {
             $credit->sale()->update(['status' => 'completed']);
         } else {
-            $credit->sale()->update(['status' => 'pending']);
+            $credit->sale()->update(['status' => 'debt']);
         }
 
         return response()->json($credit);

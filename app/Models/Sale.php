@@ -17,8 +17,12 @@ class Sale extends Model
         static::creating(function ($sale) {
             $sale->uuid = Str::uuid();
             if (!$sale->sale_number) {
-                $latestId = static::where('business_id', $sale->business_id)->latest('id')->value('id') ?? 0;
-                $sale->sale_number = 'V-' . str_pad($latestId + 1, 6, '0', STR_PAD_LEFT);
+                $latestSale = static::where('business_id', $sale->business_id)->latest('id')->first();
+                $nextNumber = 1;
+                if ($latestSale && preg_match('/V-(\d+)/', $latestSale->sale_number, $matches)) {
+                    $nextNumber = (int)$matches[1] + 1;
+                }
+                $sale->sale_number = 'V-' . str_pad($nextNumber, 6, '0', STR_PAD_LEFT);
             }
         });
     }

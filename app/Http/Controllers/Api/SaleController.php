@@ -134,8 +134,8 @@ class SaleController extends Controller
         }
 
         DB::transaction(function () use ($sale) {
-            // Revertir montos de caja si ya estaba completada
-            if ($sale->status === 'completed' && $sale->cashRegister) {
+            // Revertir montos de caja si ya estaba completada o es una deuda (crédito)
+            if (in_array($sale->status, ['completed', 'debt']) && $sale->cashRegister) {
                 $sale->cashRegister->decrement('expected_amount', $sale->total_amount);
 
                 foreach ($sale->payments as $payment) {
@@ -297,7 +297,7 @@ class SaleController extends Controller
                 'created_by' => $targetUserId,
                 'cash_register_id' => $cashRegister ? $cashRegister->id : null,
                 'total_amount' => $totalAmount,
-                'status' => ($isDelivery && count($payments) === 0) ? 'pending' : ($hasCredit ? 'pending' : 'completed'),
+                'status' => ($isDelivery && count($payments) === 0) ? 'pending' : ($hasCredit ? 'debt' : 'completed'),
             ]);
 
             foreach ($validated['items'] as $itemData) {
@@ -443,7 +443,7 @@ class SaleController extends Controller
             $hasCredit = collect($validated['payments'])->contains('payment_method', 'credit');
 
             $sale->update([
-                'status' => $hasCredit ? 'pending' : 'completed',
+                'status' => $hasCredit ? 'debt' : 'completed',
                 'cash_register_id' => $cashRegister->id,
             ]);
 

@@ -50,11 +50,36 @@ class CashRegisterController extends Controller
             ->first();
 
         if ($openRegister) {
-            // total_in_cash: Monto inicial + efectivo de ventas
-            $openRegister->total_in_cash = $openRegister->initial_amount + $openRegister->cash_sales_amount;
+            // total_in_cash: Monto inicial + efectivo de ventas + ingresos manuales
+            $openRegister->total_in_cash = $openRegister->initial_amount + $openRegister->cash_sales_amount + $openRegister->manual_inflow;
             return response()->json(['success' => true, 'data' => $openRegister]);
         }
         return response()->json(['success' => false, 'message' => 'No hay caja abierta'], 404);
+    }
+
+    public function addInflow(Request $request, CashRegister $cashRegister)
+    {
+        if ($cashRegister->business_id !== Auth::user()->business_id) {
+            return response()->json(['message' => 'No autorizado para esta caja.'], 403);
+        }
+
+        if ($cashRegister->status === 'closed') {
+            return response()->json(['message' => 'No se puede inyectar dinero a una caja cerrada.'], 400);
+        }
+
+        $validated = $request->validate([
+            'amount' => 'required|numeric|min:0.01',
+            'notes' => 'nullable|string|max:255'
+        ]);
+
+        $cashRegister->increment('manual_inflow', $validated['amount']);
+        $cashRegister->increment('expected_amount', $validated['amount']);
+        
+        return response()->json([
+            'success' => true,
+            'message' => 'Monto inyectado correctamente',
+            'data' => $cashRegister
+        ]);
     }
 
     public function store(Request $request)
@@ -117,8 +142,8 @@ class CashRegisterController extends Controller
             return response()->json(['message' => 'No autorizado para esta caja.'], 403);
         }
 
-        // Calcular report_current_cash (efectivo actual en caja)
-        $cashRegister->report_current_cash = $cashRegister->initial_amount + $cashRegister->cash_sales_amount;
+        // Calcular report_current_cash (efectivo actual en caja: Inicial + Ventas + Inyecciones Manuales)
+        $cashRegister->report_current_cash = $cashRegister->initial_amount + $cashRegister->cash_sales_amount + $cashRegister->manual_inflow;
 
         // Calcular la diferencia para el reporte
         $cashRegister->report_difference = $cashRegister->report_current_cash - $cashRegister->expected_amount;
