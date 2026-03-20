@@ -77,33 +77,28 @@ class BusinessController extends Controller
 
     public function dashboard(Request $request, Business $business)
     {
-        $timezone = 'America/Lima';
         // Set locale to Spanish for date formatting
         DB::statement("SET lc_time_names = 'es_ES'");
 
         $period = $request->input('period', 'week');
-        [$startDate, $endDate] = $this->getDateRange($period, $timezone);
+        [$startDate, $endDate] = $this->getDateRange($period);
 
-        // For queries, we use UTC equivalents of the Lima start/end times
-        $startUTC = $startDate->copy()->setTimezone('UTC');
-        $endUTC = $endDate->copy()->setTimezone('UTC');
-
-        $nowLima = Carbon::now($timezone);
-        $todayLima = Carbon::today($timezone);
+        $now = Carbon::now();
+        $today = Carbon::today();
         
-        // Limits for daily/monthly stats in UTC
-        $startTodayUTC = $todayLima->copy()->startOfDay()->setTimezone('UTC');
-        $endTodayUTC = $todayLima->copy()->endOfDay()->setTimezone('UTC');
+        // Limits for daily/monthly stats using local time
+        $startToday = $today->copy()->startOfDay();
+        $endToday = $today->copy()->endOfDay();
         
-        $startMonthUTC = $nowLima->copy()->startOfMonth()->setTimezone('UTC');
-        $endMonthUTC = $nowLima->copy()->endOfMonth()->setTimezone('UTC');
+        $startMonth = $now->copy()->startOfMonth();
+        $endMonth = $now->copy()->endOfMonth();
 
         // Stats for top cards
         $stats = [
-            'daily_sales' => $business->sales()->where('status', 'completed')->whereBetween('created_at', [$startTodayUTC, $endTodayUTC])->sum('total_amount'),
-            'monthly_sales' => $business->sales()->where('status', 'completed')->whereBetween('created_at', [$startMonthUTC, $endMonthUTC])->sum('total_amount'),
-            'daily_expenses' => $business->expenses()->whereDate('expense_date', $todayLima)->sum('amount'),
-            'monthly_expenses' => $business->expenses()->whereMonth('expense_date', $nowLima->month)->whereYear('expense_date', $nowLima->year)->sum('amount'),
+            'daily_sales' => $business->sales()->where('status', 'completed')->whereBetween('created_at', [$startToday, $endToday])->sum('total_amount'),
+            'monthly_sales' => $business->sales()->where('status', 'completed')->whereBetween('created_at', [$startMonth, $endMonth])->sum('total_amount'),
+            'daily_expenses' => $business->expenses()->whereDate('expense_date', $today)->sum('amount'),
+            'monthly_expenses' => $business->expenses()->whereMonth('expense_date', $now->month)->whereYear('expense_date', $now->year)->sum('amount'),
             'products_low_stock' => $business->products()->whereColumn('stock', '<=', 'min_stock')->count(),
             'pending_credits' => $business->credits()->where('status', 'pending')->count(),
             'cash_in_register' => $business->cashRegisters()->where('status', 'open')->sum(DB::raw('initial_amount + cash_sales_amount')),
@@ -123,17 +118,17 @@ class BusinessController extends Controller
             ->select('sale_items.item_name as name', DB::raw('SUM(sale_items.quantity) as quantity'), DB::raw('SUM(sale_items.total_price) as revenue'))
             ->where('sales.business_id', $business->id)
             ->where('sales.status', 'completed')
-            ->where('sales.created_at', '>=', $nowLima->copy()->subDays(30)->setTimezone('UTC'))
+            ->where('sales.created_at', '>=', $now->copy()->subDays(30))
             ->where('sale_items.item_type', 'App\\Models\\Product')
             ->groupBy('sale_items.item_name')->orderBy('revenue', 'desc')->limit(5)->get();
 
         // Recent activities
-        $recentActivities = $this->getRecentActivities($business, $timezone);
+        $recentActivities = $this->getRecentActivities($business);
 
         // Cash register status
         $cashRegistersToday = $business->cashRegisters()
             ->with('openedBy:id,first_name,last_name') // Eager load user info
-            ->whereBetween('opened_at', [$startTodayUTC, $endTodayUTC])
+            ->whereBetween('opened_at', [$startToday, $endToday])
             ->orderBy('opened_at', 'desc')
             ->get();
 
@@ -153,7 +148,7 @@ class BusinessController extends Controller
         ]);
     }
 
-    private function getDateRange($period, $timezone = 'UTC')
+    private function getDateRange($period, $timezone = null)
     {
         $now = Carbon::now($timezone);
 
@@ -173,15 +168,15 @@ class BusinessController extends Controller
     private function getChartData($business, $type, $period, $startDate, $endDate)
     {
         $table = $type === 'sales' ? 'sales' : 'expenses';
-        $dateColumn = 'created_at'; // Siempre usamos created_at para tener precisión de tiempo (horas/mins)
+        $dateColumn = 'created_at';
         $amountColumn = $type === 'sales' ? 'total_amount' : 'amount';
 
-        // Filtramos usando rangos UTC para la columna TIMESTAMP
-        $start = $startDate->copy()->setTimezone('UTC')->toDateTimeString();
-        $end = $endDate->copy()->setTimezone('UTC')->toDateTimeString();
+        // Usamos las fechas directamente según la zona horaria de la aplicación
+        $start = $startDate->toDateTimeString();
+        $end = $endDate->toDateTimeString();
 
-        // Para etiquetas y agrupación, ajustamos el TIMESTAMP de UTC a Lima (-5 horas)
-        $dbDateExpr = "DATE_SUB(created_at, INTERVAL 5 HOUR)";
+        // Usamos directamente la columna created_at sin restar horas manualmente
+        $dbDateExpr = 'created_at';
 
         $query = DB::table($table)
             ->where('business_id', $business->id)
