@@ -109,4 +109,14 @@ class LoanController extends Controller
 
         return response()->json($loan);
     }
+
+    public function timeline(Loan $loan)
+    {
+        return response()->json(
+            $loan->audits()
+                ->with('user')
+                ->latest()
+                ->get()
+        );
+    }
 }

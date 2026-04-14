@@ -56,7 +56,11 @@ class ExpenseController extends Controller
             'notes' => 'nullable|string',
         ]);
 
-        $expense = Auth::user()->business->expenses()->create($validated + ['created_by' => Auth::id()]);
+        $expense = new Expense($validated + ['created_by' => Auth::id()]);
+        $expense->business_id = Auth::user()->business_id;
+        $expense->created_at = $validated['expense_date'];
+        $expense->updated_at = $validated['expense_date'];
+        $expense->save();
 
         // Return the expense with the creator relationship loaded
         return response()->json($expense->load('creator', 'category'), 201);
@@ -80,7 +84,14 @@ class ExpenseController extends Controller
             'notes' => 'nullable|string',
         ]);
 
-        $expense->update($validated);
+        $expense->fill($validated);
+
+        if (isset($validated['expense_date'])) {
+            $expense->created_at = $validated['expense_date'];
+            $expense->updated_at = $validated['expense_date'];
+        }
+
+        $expense->save();
 
         // Return the expense with the creator relationship loaded
         return response()->json($expense->load('creator', 'category'));

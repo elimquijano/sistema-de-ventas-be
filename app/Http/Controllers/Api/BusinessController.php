@@ -118,6 +118,8 @@ class BusinessController extends Controller
             ->select('sale_items.item_name as name', DB::raw('SUM(sale_items.quantity) as quantity'), DB::raw('SUM(sale_items.total_price) as revenue'))
             ->where('sales.business_id', $business->id)
             ->where('sales.status', 'completed')
+            ->whereNull('sales.deleted_at')
+            ->whereNull('sale_items.deleted_at')
             ->where('sales.created_at', '>=', $now->copy()->subDays(30))
             ->where('sale_items.item_type', 'App\\Models\\Product')
             ->groupBy('sale_items.item_name')->orderBy('revenue', 'desc')->limit(5)->get();
@@ -180,6 +182,7 @@ class BusinessController extends Controller
 
         $query = DB::table($table)
             ->where('business_id', $business->id)
+            ->whereNull('deleted_at')
             ->whereBetween($dateColumn, [$start, $end]);
 
         if ($type === 'sales') {

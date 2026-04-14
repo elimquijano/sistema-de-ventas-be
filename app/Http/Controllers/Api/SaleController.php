@@ -54,15 +54,16 @@ class SaleController extends Controller
         ]);
 
         $sale = DB::transaction(function () use ($validated, $business) {
-            // 1. Buscar o Crear Cliente
+            // 1. Buscar o Crear Cliente (Basado en teléfono Y dirección para permitir múltiples ubicaciones)
             $client = Client::where('phone', $validated['phone'])
+                ->where('address', $validated['address'])
                 ->where('business_id', $business->id)
                 ->first();
 
             if (!$client) {
                 $client = Client::create([
                     'phone' => $validated['phone'],
-                    'name' => $validated['customer_name'] ?? 'Cliente Nuevo (' . $validated['phone'] . ')',
+                    'name' => $validated['customer_name'] ?? 'Cliente (' . $validated['phone'] . ')',
                     'address' => $validated['address'],
                     'address_detail' => $validated['notes'] ?? null,
                     'latitude' => $validated['latitude'] ?? 0,
@@ -81,6 +82,7 @@ class SaleController extends Controller
             }
 
             // 3. Crear la Venta (Borrador/Pending)
+            $scheduledAt = $validated['scheduled_at'] ?? now();
             $sale = $business->sales()->create([
                 'customer_name' => $client->name,
                 'client_id' => $client->id,
@@ -89,8 +91,9 @@ class SaleController extends Controller
                 'delivery_phone' => $client->phone,
                 'delivery_notes' => $validated['notes'],
                 'is_delivery' => true,
-                'scheduled_at' => $validated['scheduled_at'] ?? now(),
-                'created_by' => $validated['rider_id'],
+                'scheduled_at' => $scheduledAt,
+                'created_at' => $scheduledAt, // Usar la fecha programada como fecha de creación para sincronización
+                'created_by' => Auth::id(),
                 'total_amount' => $validated['total_amount'], // Monto manual
                 'status' => 'pending',
             ]);
@@ -110,18 +113,127 @@ class SaleController extends Controller
             $product->decrement('stock', $validated['quantity']);
 
             // 6. Preparar Mensaje para el Repartidor (WhatsApp)
-            $whatsappMsg = $this->whatsappService->formatSaleMessage($sale);
+            // Solo enviar si el pedido no es de hace más de 15 minutos (para evitar duplicados en sincronización)
+            $scheduledAt = Carbon::parse($sale->scheduled_at);
+            if ($scheduledAt->isAfter(now()->subMinutes(15))) {
+                $whatsappMsg = $this->whatsappService->formatSaleMessage($sale);
 
-            // Buscar teléfono del rider
-            $rider = User::find($validated['rider_id']);
-            if ($rider && $rider->phone) {
-                $this->whatsappService->sendMessage($rider->phone, $whatsappMsg);
+                // Buscar teléfono del rider
+                $rider = User::find($validated['rider_id']);
+                if ($rider && $rider->phone) {
+                    $this->whatsappService->sendMessage($rider->phone, $whatsappMsg);
+                }
             }
 
             return $sale;
         });
 
         return response()->json($sale->load('items', 'client', 'rider'), 201);
+    }
+
+    /**
+     * Editar una orden rápida existente (Motorizado, Monto, Cantidad, Notas, etc.)
+     */
+    public function updateQuickOrder(Request $request, Sale $sale)
+    {
+        if ($sale->status !== 'pending') {
+            return response()->json(['message' => 'Solo se pueden editar pedidos en estado pendiente.'], 422);
+        }
+
+        $validated = $request->validate([
+            'rider_id' => 'sometimes|required|exists:users,id',
+            'total_amount' => 'sometimes|required|numeric|min:0',
+            'quantity' => 'sometimes|required|integer|min:1',
+            'notes' => 'nullable|string',
+            'scheduled_at' => 'nullable|date',
+        ]);
+
+        $sale = DB::transaction(function () use ($validated, $sale) {
+            $item = $sale->items()->first();
+
+            // 1. Manejar cambio de cantidad y stock
+            if (isset($validated['quantity']) && $item && (int)$item->quantity !== (int)$validated['quantity']) {
+                if ($item->item_type === Product::class) {
+                    $product = Product::findOrFail($item->item_id);
+                    $diff = $validated['quantity'] - $item->quantity;
+
+                    if ($diff > 0 && $product->stock < $diff) {
+                        throw ValidationException::withMessages([
+                            'quantity' => ['Stock insuficiente para ' . $product->name . ' (Disponible: ' . $product->stock . ')']
+                        ]);
+                    }
+
+                    $product->decrement('stock', $diff);
+                }
+                $item->quantity = $validated['quantity'];
+            }
+
+            // 2. Manejar cambio de monto total y recalcular unit_price
+            // Si cambió el monto O la cantidad, recalculamos el precio unitario
+            if ($item && (isset($validated['total_amount']) || isset($validated['quantity']))) {
+                $newTotalAmount = isset($validated['total_amount']) ? $validated['total_amount'] : $sale->total_amount;
+                
+                $unitPrice = $newTotalAmount / $item->quantity;
+                $item->update([
+                    'unit_price' => $unitPrice,
+                    'total_price' => $newTotalAmount,
+                    'quantity' => $item->quantity,
+                ]);
+                
+                $sale->total_amount = $newTotalAmount;
+            }
+
+            if (isset($validated['rider_id'])) {
+                $sale->rider_id = $validated['rider_id'];
+                // Opcional: Re-enviar WhatsApp al nuevo rider si ha cambiado
+                if ($sale->isDirty('rider_id')) {
+                    $rider = User::find($validated['rider_id']);
+
+                    // Solo enviar si el pedido no es de hace más de 15 minutos (para evitar duplicados en sincronización)
+                    $scheduledAtValue = $validated['scheduled_at'] ?? $sale->scheduled_at;
+                    $scheduledAt = Carbon::parse($scheduledAtValue);
+
+                    if ($scheduledAt->isAfter(now()->subMinutes(15)) && $rider && $rider->phone) {
+                        $whatsappMsg = $this->whatsappService->formatSaleMessage($sale);
+                        $this->whatsappService->sendMessage($rider->phone, $whatsappMsg);
+                    }
+                }
+            }
+
+            if (isset($validated['notes'])) {
+                $sale->delivery_notes = $validated['notes'];
+            }
+
+            if (isset($validated['scheduled_at'])) {
+                $sale->scheduled_at = $validated['scheduled_at'];
+                $sale->created_at = $validated['scheduled_at']; // Actualizar fecha de creación para sincronización
+            }
+
+            $sale->save();
+            return $sale;
+        });
+
+        return response()->json($sale->load('items', 'client', 'rider'));
+    }
+
+    /**
+     * Revertir a estado pendiente para permitir edición completa.
+     */
+    public function reopen(Sale $sale)
+    {
+        if ($sale->status === 'cancelled') {
+            return response()->json(['message' => 'No se puede reabrir una venta cancelada. Primero restáurela.'], 422);
+        }
+
+        DB::transaction(function () use ($sale) {
+            $this->revertSaleImpacts($sale);
+            $sale->update(['status' => 'pending']);
+        });
+
+        return response()->json([
+            'message' => 'Venta revertida a pendiente. Ahora puede editar los pagos o ítems.',
+            'sale' => $sale->load('items', 'payments')
+        ]);
     }
 
     /**
@@ -134,27 +246,7 @@ class SaleController extends Controller
         }
 
         DB::transaction(function () use ($sale) {
-            // Revertir montos de caja si ya estaba completada o es una deuda (crédito)
-            if (in_array($sale->status, ['completed', 'debt']) && $sale->cashRegister) {
-                $sale->cashRegister->decrement('expected_amount', $sale->total_amount);
-
-                foreach ($sale->payments as $payment) {
-                    if ($payment->payment_method === 'cash') {
-                        $sale->cashRegister->decrement('cash_sales_amount', $payment->amount);
-                    }
-                }
-            }
-
-            // Devolver stock
-            foreach ($sale->items as $item) {
-                if ($item->item_type === Product::class) {
-                    $product = Product::find($item->item_id);
-                    if ($product) {
-                        $product->increment('stock', $item->quantity);
-                    }
-                }
-            }
-
+            $this->revertSaleImpacts($sale);
             // Cambiar estado a cancelado
             $sale->update(['status' => 'cancelled']);
         });
@@ -169,6 +261,15 @@ class SaleController extends Controller
 
         if ($user->business_id) {
             $query->where('business_id', $user->business_id);
+        }
+
+        // Filtro de Seguridad: Solo ver lo que creé o lo que me asignaron como rider
+        // A menos que sea administrador del negocio (suponiendo rol 'admin' o 'owner')
+        if (!$user->hasRole(['admin', 'owner'])) {
+            $query->where(function ($q) use ($user) {
+                $q->where('created_by', $user->id)
+                  ->orWhere('rider_id', $user->id);
+            });
         }
 
         if ($request->filled('search')) {
@@ -214,7 +315,7 @@ class SaleController extends Controller
         }
 
         $perPage = $this->getPaginationSize($request, $query);
-        $sales = $query->latest()->paginate($perPage);
+        $sales = $query->latest('id')->paginate($perPage);
 
         return response()->json($sales);
     }
@@ -285,6 +386,7 @@ class SaleController extends Controller
 
             $hasCredit = collect($payments)->contains('payment_method', 'credit');
 
+            $scheduledAt = $validated['scheduled_at'] ?? now();
             $sale = $business->sales()->create([
                 'customer_name' => $validated['customer_name'],
                 'client_id' => $validated['client_id'] ?? null,
@@ -293,8 +395,9 @@ class SaleController extends Controller
                 'delivery_phone' => $validated['delivery_phone'] ?? null,
                 'delivery_notes' => $validated['delivery_notes'] ?? null,
                 'is_delivery' => $isDelivery,
-                'scheduled_at' => $validated['scheduled_at'] ?? null,
-                'created_by' => $targetUserId,
+                'scheduled_at' => $scheduledAt,
+                'created_at' => $scheduledAt, // Usar fecha programada como creación para sincronización
+                'created_by' => Auth::id(),
                 'cash_register_id' => $cashRegister ? $cashRegister->id : null,
                 'total_amount' => $totalAmount,
                 'status' => ($isDelivery && count($payments) === 0) ? 'pending' : ($hasCredit ? 'debt' : 'completed'),
@@ -339,15 +442,18 @@ class SaleController extends Controller
                             ['description' => 'Descuentos aplicados en ventas delivery o POS']
                         );
 
-                        Expense::create([
+                        $expense = new Expense([
                             'description' => "Descuento en venta POS {$sale->sale_number}",
                             'amount' => $payment['amount'],
-                            'expense_date' => now(),
+                            'expense_date' => $sale->created_at,
                             'category_id' => $category->id,
                             'business_id' => $business->id,
                             'created_by' => $targetUserId,
                             'notes' => "Aplicado automáticamente en venta POS #{$sale->id}"
                         ]);
+                        $expense->created_at = $sale->created_at;
+                        $expense->updated_at = $sale->created_at;
+                        $expense->save();
                     }
                 }
             } elseif ($hasCredit && $cashRegister) {
@@ -365,15 +471,18 @@ class SaleController extends Controller
                             ['description' => 'Descuentos aplicados en ventas delivery o POS']
                         );
 
-                        Expense::create([
+                        $expense = new Expense([
                             'description' => "Descuento en venta Mixta {$sale->sale_number}",
                             'amount' => $payment['amount'],
-                            'expense_date' => now(),
+                            'expense_date' => $sale->created_at,
                             'category_id' => $category->id,
                             'business_id' => $business->id,
                             'created_by' => $targetUserId,
                             'notes' => "Aplicado automáticamente en venta mixta #{$sale->id}"
                         ]);
+                        $expense->created_at = $sale->created_at;
+                        $expense->updated_at = $sale->created_at;
+                        $expense->save();
                     }
                 }
             }
@@ -407,14 +516,15 @@ class SaleController extends Controller
 
         $validated = $request->validate([
             'payments' => 'required|array|min:1',
-            'payments.*.payment_method' => 'required|string|in:cash,credit,yape,plin,card,transfer,discount',
+            'payments.*.payment_method' => 'required|string|in:cash,credit,yape,plin,card,transfer,discount,vale', // Se añade 'vale'
             'payments.*.amount' => 'required|numeric|min:0',
             'payments.*.reference' => 'nullable|string|max:255',
+            'payments.*.payment_image' => 'nullable|image',// |max:2048', // Se añade imagen
         ]);
 
         $business = Auth::user()->business;
 
-        $sale = DB::transaction(function () use ($validated, $sale, $business) {
+        $sale = DB::transaction(function () use ($validated, $sale, $business, $request) {
             $targetUserId = $sale->rider_id ?? Auth::id();
 
             $cashRegister = $business->cashRegisters()
@@ -453,31 +563,44 @@ class SaleController extends Controller
             // pero registrar el descuento como gasto.
             $cashRegister->increment('expected_amount', $sale->total_amount);
 
-            foreach ($validated['payments'] as $payment) {
-                $sale->payments()->create($payment);
+            foreach ($validated['payments'] as $index => $payment) {
+                $imagePath = null;
+                // Si hay una imagen para este pago específico (usando el índice del array)
+                if ($request->hasFile("payments.{$index}.payment_image")) {
+                    $imagePath = $request->file("payments.{$index}.payment_image")->store('payments', 'public');
+                }
+
+                $sale->payments()->create([
+                    'amount' => $payment['amount'],
+                    'payment_method' => $payment['payment_method'],
+                    'reference' => $payment['reference'],
+                    'payment_image' => $imagePath,
+                ]);
 
                 if ($payment['payment_method'] === 'cash') {
                     $cashRegister->increment('cash_sales_amount', $payment['amount']);
                 }
 
                 if ($payment['payment_method'] === 'discount') {
-                    // Registrar como Gasto automático
+                    // Registrar como Gasto automático (solo para descuentos reales)
                     $category = Category::firstOrCreate(
                         ['name' => 'Descuentos en Ventas', 'business_id' => $business->id],
-                        ['description' => 'Descuentos aplicados en ventas delivery o POS']
+                        ['description' => 'Descuentos aplicados en ventas']
                     );
 
-                    Expense::create([
+                    $expense = new Expense([
                         'description' => "Descuento en venta {$sale->sale_number}",
                         'amount' => $payment['amount'],
-                        'expense_date' => now(),
+                        'expense_date' => $sale->created_at,
                         'category_id' => $category->id,
                         'business_id' => $business->id,
                         'created_by' => $targetUserId,
                         'notes' => "Aplicado automáticamente al confirmar entrega de venta #{$sale->id}"
                     ]);
+                    $expense->created_at = $sale->created_at;
+                    $expense->updated_at = $sale->created_at;
+                    $expense->save();
                 }
-
                 if ($payment['payment_method'] === 'credit') {
                     $business->credits()->create([
                         'sale_id' => $sale->id,
@@ -503,44 +626,64 @@ class SaleController extends Controller
     public function destroy(Sale $sale)
     {
         DB::transaction(function () use ($sale) {
-            // Revert cash register amounts
-            if ($sale->cashRegister) {
-                $sale->cashRegister->decrement('expected_amount', $sale->total_amount);
+            $this->revertSaleImpacts($sale);
 
-                foreach ($sale->payments as $payment) {
-                    if ($payment->payment_method === 'cash') {
-                        $sale->cashRegister->decrement('cash_sales_amount', $payment->amount);
-                    }
-                }
-            }
-
-            // Delete associated credit if exists
-            if ($sale->credit) {
-                $sale->credit->delete();
-            }
-
-            // Restore stock for products
-            foreach ($sale->items as $item) {
-                if ($item->item_type === Product::class) {
-                    // The 'item' relationship might not be loaded, so load it if necessary
-                    $product = $item->item ?? Product::find($item->item_id);
-                    if ($product) {
-                        $product->increment('stock', $item->quantity);
-                    }
-                }
-            }
-
-            // Delete payment records
-            $sale->payments()->delete();
-
-            // Delete sale items
+            // Eliminar los items (Soft delete)
             $sale->items()->delete();
 
-            // Delete the sale
+            // Eliminar la venta (Soft delete)
             $sale->delete();
         });
 
         return response()->json(null, 204);
+    }
+
+    /**
+     * Lógica centralizada para revertir todos los efectos financieros y de stock de una venta.
+     * Protege la integridad de la caja, el inventario, las deudas y los gastos.
+     */
+    protected function revertSaleImpacts(Sale $sale)
+    {
+        // 1. Revertir montos de caja registradora
+        // Solo si la venta afectó la caja (estados completed o debt)
+        if (in_array($sale->status, ['completed', 'debt']) && $sale->cash_register_id) {
+            $cashRegister = $sale->cashRegister;
+            if ($cashRegister) {
+                $cashRegister->decrement('expected_amount', $sale->total_amount);
+
+                foreach ($sale->payments as $payment) {
+                    if ($payment->payment_method === 'cash') {
+                        $cashRegister->decrement('cash_sales_amount', $payment->amount);
+                    }
+                }
+            }
+        }
+
+        // 2. Revertir Stock de productos
+        foreach ($sale->items as $item) {
+            if ($item->item_type === Product::class) {
+                // Asegurarse de tener el modelo del producto para usar increment
+                $product = Product::find($item->item_id);
+                if ($product) {
+                    $product->increment('stock', $item->quantity);
+                }
+            }
+        }
+
+        // 3. Eliminar Crédito asociado (si existe)
+        if ($sale->credit) {
+            $sale->credit->delete(); // Soft Delete
+        }
+
+        // 4. Eliminar Gastos por descuentos automáticos
+        // Buscamos gastos que tengan el ID de la venta en las notas para ser precisos
+        Expense::where('business_id', $sale->business_id)
+            ->where('notes', 'like', "%#{$sale->id}")
+            ->where('description', 'like', "%Descuento%")
+            ->delete(); // Soft Delete
+
+        // 5. Eliminar registros de pagos (Soft Delete)
+        $sale->payments()->delete();
     }
 
     public function getDailySales(Request $request)
@@ -557,7 +700,15 @@ class SaleController extends Controller
             $query->where('business_id', $user->business_id);
         }
 
-        $sales = $query->latest()->get();
+        // Filtro de Seguridad
+        if (!$user->hasRole(['admin', 'owner'])) {
+            $query->where(function ($q) use ($user) {
+                $q->where('created_by', $user->id)
+                  ->orWhere('rider_id', $user->id);
+            });
+        }
+
+        $sales = $query->latest('id')->get();
 
         return response()->json($sales);
     }
@@ -576,8 +727,16 @@ class SaleController extends Controller
             $query->where('business_id', $user->business_id);
         }
 
+        // Filtro de Seguridad
+        if (!$user->hasRole(['admin', 'owner'])) {
+            $query->where(function ($q) use ($user) {
+                $q->where('created_by', $user->id)
+                  ->orWhere('rider_id', $user->id);
+            });
+        }
+
         $perPage = $this->getPaginationSize($request, $query);
-        $sales = $query->latest()->paginate($perPage);
+        $sales = $query->latest('id')->paginate($perPage);
 
         return response()->json($sales);
     }
@@ -610,5 +769,14 @@ class SaleController extends Controller
             ->setPaper([0, 0, 227, 650]);
 
         return $pdf->stream('receipt-' . $sale->sale_number . '.pdf');
+    }
+
+    /**
+     * Obtener la línea de tiempo (auditoría) de una venta.
+     */
+    public function timeline($id)
+    {
+        $sale = Sale::withTrashed()->findOrFail($id);
+        return response()->json($sale->getDeepTimeline());
     }
 }

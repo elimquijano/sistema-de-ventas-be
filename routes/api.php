@@ -97,9 +97,12 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('sales/daily', [SaleController::class, 'getDailySales']); // MODIFICADO
     Route::get('sales/monthly/{year}/{month}', [SaleController::class, 'getMonthlySales']);
     Route::post('sales/quick-order', [SaleController::class, 'quickOrder']);
+    Route::put('sales/quick-order/{sale}', [SaleController::class, 'updateQuickOrder']); // NUEVA RUTA
     Route::post('sales/{sale}/confirm-delivery', [SaleController::class, 'confirmDelivery']);
     Route::post('sales/{sale}/cancel', [SaleController::class, 'cancel']);
+    Route::post('sales/{sale}/reopen', [SaleController::class, 'reopen']);
     Route::post('sales/{sale}/whatsapp-resend', [WhatsAppController::class, 'resendSaleMessage']);
+    Route::get('sales/{sale}/timeline', [SaleController::class, 'timeline']);
     Route::apiResource('sales', SaleController::class);
 
     // Clients
@@ -116,6 +119,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // Préstamos
     Route::post('loans/{loan}/payment', [LoanController::class, 'addPayment']); // Changed from 'return'
     Route::get('loans/pending', [LoanController::class, 'getPending']);
+    Route::get('loans/{loan}/timeline', [LoanController::class, 'timeline']);
     Route::apiResource('loans', LoanController::class)->except(['update']); // Exclude default update if we have a custom one
     Route::post('loans/{loan}', [LoanController::class, 'update']); // For handling form-data if needed, or just use PUT
 

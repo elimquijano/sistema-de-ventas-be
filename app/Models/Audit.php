@@ -1,0 +1,153 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Prunable;
+
+class Audit extends Model
+{
+    use Prunable;
+
+    protected $guarded = [];
+
+    protected $casts = [
+        'old_values' => 'json',
+        'new_values' => 'json',
+        'metadata' => 'json',
+    ];
+
+    /**
+     * Define qué registros son "podables" (borrables automáticamente).
+     * Esto evita que la BD explote en tamaño.
+     */
+    public function prunable()
+    {
+        return static::where(function($query) {
+            // Borrar actualizaciones (updated) después de 6 meses (son las que más pesan)
+            $query->where('event', 'updated')
+                  ->where('created_at', '<=', now()->subMonths(6));
+        })->orWhere(function($query) {
+            // Borrar todo lo demás después de 1 año (creaciones, eliminaciones, etc)
+            $query->where('created_at', '<=', now()->subYear());
+        });
+    }
+
+    public function auditable()
+    {
+        return $this->morphTo();
+    }
+
+    public function user()
+    {
+        return $this->belongsTo(User::class);
+    }
+
+    public function business()
+    {
+        return $this->belongsTo(Business::class);
+    }
+
+    /**
+     * Genera una descripción legible y descriptiva.
+     */
+    public function getDescriptionAttribute()
+    {
+        $class = class_basename($this->auditable_type);
+        $meta = $this->metadata ?? [];
+
+        switch ($this->event) {
+            case 'created':
+                if ($class === 'Sale') {
+                    $client = $meta['client_name'] ?? 'Cliente';
+                    $rider = isset($meta['rider_name']) ? " asignado a {$meta['rider_name']}" : "";
+                    return "Creó el pedido para {$client}{$rider}.";
+                }
+                if ($class === 'SalePayment') {
+                    $method = $meta['method'] ?? 'Desconocido';
+                    $amount = $meta['amount'] ?? '0.00';
+                    return "Registró un pago de S/ {$amount} vía {$method}.";
+                }
+                if ($class === 'Expense') {
+                    $amount = $this->new_values['amount'] ?? '0.00';
+                    $desc = $this->new_values['description'] ?? 'Sin descripción';
+                    $cat = $meta['category_name'] ?? 'General';
+                    return "Registró un nuevo gasto de S/ {$amount} en {$cat}: {$desc}.";
+                }
+                if ($class === 'Loan') {
+                    $amount = $this->new_values['amount'] ?? '0.00';
+                    $desc = $this->new_values['description'] ?? 'Sin descripción';
+                    return "Inició un préstamo por S/ {$amount}: {$desc}.";
+                }
+                return "Creó " . $this->getFriendlyModelName();
+
+            case 'updated':
+                if ($class === 'Sale' && isset($this->new_values['status'])) {
+                    $status = $this->new_values['status'];
+                    $labels = ['completed' => 'Completada/Entregada', 'pending' => 'Pendiente', 'cancelled' => 'Cancelada', 'debt' => 'Deuda'];
+                    return "Cambió el estado del pedido a: " . ($labels[$status] ?? $status);
+                }
+                
+                if ($class === 'Loan' && isset($this->new_values['paid_amount'])) {
+                    $paid = $this->new_values['paid_amount'];
+                    $pending = $this->new_values['pending_amount'] ?? '0.00';
+                    return "Registró un abono al préstamo. Monto pagado: S/ {$paid}, pendiente: S/ {$pending}.";
+                }
+                
+                $changes = [];
+                foreach ($this->new_values ?? [] as $key => $value) {
+                    $old = $this->old_values[$key] ?? 'nulo';
+                    $changes[] = "cambió " . $this->formatFieldName($key) . " de '{$old}' a '{$value}'";
+                }
+                return "Actualizó " . $this->getFriendlyModelName() . ": " . implode(', ', $changes);
+
+            case 'deleted':
+                return "Eliminó " . $this->getFriendlyModelName();
+            default:
+                return $this->event;
+        }
+    }
+
+    protected function getFriendlyModelName()
+    {
+        $class = class_basename($this->auditable_type);
+        $names = [
+            'Sale' => 'la venta',
+            'Product' => 'el producto',
+            'Service' => 'el servicio',
+            'Client' => 'el cliente',
+            'Expense' => 'el gasto',
+            'Loan' => 'el préstamo',
+            'Credit' => 'el crédito',
+            'User' => 'el usuario',
+            'Role' => 'el rol',
+            'Permission' => 'el permiso',
+        ];
+
+        return $names[$class] ?? strtolower($class);
+    }
+
+    protected function formatFieldName($key)
+    {
+        $fields = [
+            'status' => 'el estado',
+            'total_amount' => 'el monto total',
+            'customer_name' => 'el nombre del cliente',
+            'rider_id' => 'el repartidor',
+            'delivery_address' => 'la dirección de entrega',
+            'delivery_phone' => 'el teléfono de entrega',
+            'delivery_notes' => 'las notas de entrega',
+            'scheduled_at' => 'la fecha programada',
+            'stock' => 'el stock',
+            'price' => 'el precio',
+            'name' => 'el nombre',
+            'description' => 'la descripción',
+            'address' => 'la dirección',
+            'phone' => 'el teléfono',
+            'email' => 'el correo electrónico',
+        ];
+
+        return $fields[$key] ?? str_replace('_', ' ', $key);
+    }
+}
+
