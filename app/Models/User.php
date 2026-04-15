@@ -22,6 +22,7 @@ class User extends Authenticatable
         'password',
         'avatar',
         'status',
+        'receive_notifications',
         'last_login_at',
         'last_login_ip',
         'business_id'
@@ -36,6 +37,7 @@ class User extends Authenticatable
         'email_verified_at' => 'datetime',
         'last_login_at' => 'datetime',
         'password' => 'hashed',
+        'receive_notifications' => 'boolean',
     ];
 
     protected $appends = ['full_name', 'initials'];

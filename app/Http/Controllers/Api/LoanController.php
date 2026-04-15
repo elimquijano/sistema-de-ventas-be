@@ -99,12 +99,14 @@ class LoanController extends Controller
         ]);
 
         DB::transaction(function () use ($loan, $validated) {
-            $loan->increment('paid_amount', $validated['amount']);
-            $loan->decrement('pending_amount', $validated['amount']);
+            $loan->paid_amount += $validated['amount'];
+            $loan->pending_amount -= $validated['amount'];
 
             if ($loan->pending_amount <= 0) {
-                $loan->update(['status' => 'paid']);
+                $loan->status = 'paid';
             }
+            
+            $loan->save();
         });
 
         return response()->json($loan);

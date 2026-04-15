@@ -13,6 +13,35 @@ class Credit extends Model
     protected $guarded = [];
     protected $casts = ['due_date' => 'date'];
 
+    /**
+     * Campos a incluir en la auditoría.
+     */
+    protected $auditInclude = [
+        'paid_amount',
+        'pending_amount',
+        'status',
+        'due_date'
+    ];
+
+    /**
+     * Define el padre de la auditoría (la venta).
+     */
+    public function getAuditParent()
+    {
+        return $this->sale;
+    }
+
+    /**
+     * Metadatos para las notificaciones.
+     */
+    public function auditMetadata($newValues)
+    {
+        return [
+            'client_name' => $this->customer_name,
+            'sale_number' => $this->sale ? $this->sale->sale_number : null,
+        ];
+    }
+
     public function business()
     {
         return $this->belongsTo(Business::class);

@@ -88,14 +88,18 @@ class CreditController extends Controller
         ]);
 
         DB::transaction(function () use ($credit, $validated) {
-            // REVERTIDO: Ya no se busca ni se actualiza la caja registradora aquí.
-            // La lógica de caja se mantiene separada de los pagos de crédito.
-
-            $credit->increment('paid_amount', $validated['amount']);
-            $credit->decrement('pending_amount', $validated['amount']);
+            // Actualizamos los montos usando el modelo para disparar eventos
+            $credit->paid_amount += $validated['amount'];
+            $credit->pending_amount -= $validated['amount'];
 
             if ($credit->pending_amount <= 0) {
-                $credit->update(['status' => 'paid']);
+                $credit->status = 'paid';
+            }
+            
+            $credit->save();
+
+            // Sincronizar estado de la venta
+            if ($credit->status === 'paid') {
                 $credit->sale()->update(['status' => 'completed']);
             }
         });
@@ -116,5 +120,10 @@ class CreditController extends Controller
         $credits = $query->latest()->paginate($perPage);
 
         return response()->json($credits);
+    }
+
+    public function timeline(Credit $credit)
+    {
+        return response()->json($credit->getDeepTimeline());
     }
 }

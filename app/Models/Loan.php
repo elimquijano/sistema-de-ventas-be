@@ -22,7 +22,6 @@ class Loan extends Model
 
     protected $fillable = [
         'description',
-...
         'amount',
         'loan_date',
         'due_date',

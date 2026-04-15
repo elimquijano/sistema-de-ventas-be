@@ -110,6 +110,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::post('/credits/{credit}/payment', [CreditController::class, 'addPayment']);
     Route::get('credits/pending', [CreditController::class, 'getPending']); // Nueva ruta
+    Route::get('credits/{credit}/timeline', [CreditController::class, 'timeline']);
     Route::apiResource('credits', CreditController::class)->except(['store', 'destroy']);
 
     // Gastos
