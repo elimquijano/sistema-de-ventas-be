@@ -42,8 +42,20 @@ class ServiceController extends Controller
         ]);
 
         if ($request->hasFile('image')) {
-            $path = $request->file('image')->store('services', 'public');
-            $validated['image_path'] = $path;
+            $file = $request->file('image');
+            $filename = uniqid() . '.jpg';
+            $path = "services/{$filename}";
+
+            try {
+                $manager = new \Intervention\Image\ImageManager(new \Intervention\Image\Drivers\Gd\Driver());
+                $image = $manager->read($file);
+                $image->scale(width: 800); // Servicios suelen ser fotos más pequeñas
+                $encoded = $image->toJpeg(80);
+                \Illuminate\Support\Facades\Storage::disk('public')->put($path, (string) $encoded);
+                $validated['image_path'] = $path;
+            } catch (\Exception $e) {
+                $validated['image_path'] = $file->store('services', 'public');
+            }
         }
 
         unset($validated['image']);
@@ -73,8 +85,21 @@ class ServiceController extends Controller
             if ($service->image_path) {
                 Storage::disk('public')->delete($service->image_path);
             }
-            $path = $request->file('image')->store('services', 'public');
-            $validated['image_path'] = $path;
+            
+            $file = $request->file('image');
+            $filename = uniqid() . '.jpg';
+            $path = "services/{$filename}";
+
+            try {
+                $manager = new \Intervention\Image\ImageManager(new \Intervention\Image\Drivers\Gd\Driver());
+                $image = $manager->read($file);
+                $image->scale(width: 800);
+                $encoded = $image->toJpeg(80);
+                Storage::disk('public')->put($path, (string) $encoded);
+                $validated['image_path'] = $path;
+            } catch (\Exception $e) {
+                $validated['image_path'] = $file->store('services', 'public');
+            }
         }
 
         unset($validated['image']);

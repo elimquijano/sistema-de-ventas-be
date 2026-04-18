@@ -55,8 +55,20 @@ class ClientController extends Controller
         $validated = $request->validated();
 
         if ($request->hasFile('image')) {
-            $path = $request->file('image')->store('clients', 'public');
-            $validated['image'] = $path;
+            $file = $request->file('image');
+            $filename = uniqid() . '.jpg';
+            $path = "clients/{$filename}";
+
+            try {
+                $manager = new \Intervention\Image\ImageManager(new \Intervention\Image\Drivers\Gd\Driver());
+                $image = $manager->read($file);
+                $image->scale(width: 800);
+                $encoded = $image->toJpeg(80);
+                Storage::disk('public')->put($path, (string) $encoded);
+                $validated['image'] = $path;
+            } catch (\Exception $e) {
+                $validated['image'] = $file->store('clients', 'public');
+            }
         }
         
         // Handle route field if it is a JSON string (common in multipart/form-data)
@@ -98,8 +110,21 @@ class ClientController extends Controller
             if ($client->image) {
                 Storage::disk('public')->delete($client->image);
             }
-            $path = $request->file('image')->store('clients', 'public');
-            $validated['image'] = $path. ''; // Ensure it's string
+            
+            $file = $request->file('image');
+            $filename = uniqid() . '.jpg';
+            $path = "clients/{$filename}";
+
+            try {
+                $manager = new \Intervention\Image\ImageManager(new \Intervention\Image\Drivers\Gd\Driver());
+                $image = $manager->read($file);
+                $image->scale(width: 800);
+                $encoded = $image->toJpeg(80);
+                Storage::disk('public')->put($path, (string) $encoded);
+                $validated['image'] = $path;
+            } catch (\Exception $e) {
+                $validated['image'] = $file->store('clients', 'public');
+            }
         }
 
         // Handle route field if it is a JSON string

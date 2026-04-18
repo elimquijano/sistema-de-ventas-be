@@ -565,9 +565,28 @@ class SaleController extends Controller
 
             foreach ($validated['payments'] as $index => $payment) {
                 $imagePath = null;
-                // Si hay una imagen para este pago específico (usando el índice del array)
                 if ($request->hasFile("payments.{$index}.payment_image")) {
-                    $imagePath = $request->file("payments.{$index}.payment_image")->store('payments', 'public');
+                    $file = $request->file("payments.{$index}.payment_image");
+                    $filename = uniqid() . '.jpg';
+                    $imagePath = "payments/{$filename}";
+
+                    try {
+                        // Usar Intervention Image v3 para comprimir
+                        $manager = new \Intervention\Image\ImageManager(new \Intervention\Image\Drivers\Gd\Driver());
+                        $image = $manager->read($file);
+                        
+                        // Redimensionar si es muy grande (max 1200px) manteniendo aspecto
+                        $image->scale(width: 1200);
+                        
+                        // Codificar como JPG con calidad 75% para ahorrar espacio
+                        $encoded = $image->toJpeg(75);
+                        
+                        // Guardar en el disco public
+                        Storage::disk('public')->put($imagePath, (string) $encoded);
+                    } catch (\Exception $e) {
+                        // Si falla el procesamiento, guardar el original como respaldo
+                        $imagePath = $file->store('payments', 'public');
+                    }
                 }
 
                 $sale->payments()->create([

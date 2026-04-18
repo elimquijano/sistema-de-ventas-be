@@ -132,8 +132,25 @@ class PurchaseController extends Controller
                 // 5. Handle receipt/invoice
                 $receiptPath = null;
                 if ($request->hasFile('receipt_file')) {
-                    $receiptPath = $request->file('receipt_file')->store('receipts', 'public');
-                }else {
+                    $file = $request->file('receipt_file');
+                    $extension = $file->getClientOriginalExtension();
+                    
+                    if (in_array(strtolower($extension), ['jpg', 'jpeg', 'png', 'webp'])) {
+                        $filename = uniqid() . '.jpg';
+                        $receiptPath = "receipts/{$filename}";
+                        try {
+                            $manager = new \Intervention\Image\ImageManager(new \Intervention\Image\Drivers\Gd\Driver());
+                            $image = $manager->read($file);
+                            $image->scale(width: 1200);
+                            $encoded = $image->toJpeg(75);
+                            Storage::disk('public')->put($receiptPath, (string) $encoded);
+                        } catch (\Exception $e) {
+                            $receiptPath = $file->store('receipts', 'public');
+                        }
+                    } else {
+                        $receiptPath = $file->store('receipts', 'public');
+                    }
+                } else {
                     $receiptPath = $this->generatePdfReceipt($purchase->load('items'));
                 }
 

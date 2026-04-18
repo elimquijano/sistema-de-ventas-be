@@ -45,8 +45,20 @@ class ProductController extends Controller
         ]);
 
         if ($request->hasFile('image')) {
-            $path = $request->file('image')->store('products', 'public');
-            $validated['image_path'] = $path; // Corrected to image_path
+            $file = $request->file('image');
+            $filename = uniqid() . '.jpg';
+            $path = "products/{$filename}";
+
+            try {
+                $manager = new \Intervention\Image\ImageManager(new \Intervention\Image\Drivers\Gd\Driver());
+                $image = $manager->read($file);
+                $image->scale(width: 800);
+                $encoded = $image->toJpeg(80);
+                Storage::disk('public')->put($path, (string) $encoded);
+                $validated['image_path'] = $path;
+            } catch (\Exception $e) {
+                $validated['image_path'] = $file->store('products', 'public');
+            }
         }
 
         unset($validated['image']);
@@ -79,8 +91,21 @@ class ProductController extends Controller
             if ($product->image_path) {
                 Storage::disk('public')->delete($product->image_path);
             }
-            $path = $request->file('image')->store('products', 'public');
-            $validated['image_path'] = $path; // Corrected to image_path
+            
+            $file = $request->file('image');
+            $filename = uniqid() . '.jpg';
+            $path = "products/{$filename}";
+
+            try {
+                $manager = new \Intervention\Image\ImageManager(new \Intervention\Image\Drivers\Gd\Driver());
+                $image = $manager->read($file);
+                $image->scale(width: 800);
+                $encoded = $image->toJpeg(80);
+                Storage::disk('public')->put($path, (string) $encoded);
+                $validated['image_path'] = $path;
+            } catch (\Exception $e) {
+                $validated['image_path'] = $file->store('products', 'public');
+            }
         }
 
         unset($validated['image']);

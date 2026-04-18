@@ -21,17 +21,34 @@ class FileController extends Controller
 
         $file = $request->file('file');
         $path = $request->path;
+        $extension = $file->getClientOriginalExtension();
 
-        // Generar un nombre de archivo único para evitar colisiones
-        $filename = Str::uuid() . '.' . $file->getClientOriginalExtension();
+        // Generar un nombre de archivo único
+        $filename = Str::uuid() . '.' . (in_array(strtolower($extension), ['jpg', 'jpeg', 'png', 'webp']) ? 'jpg' : $extension);
+        $storedPath = "{$path}/{$filename}";
 
-        // Guardar el archivo en la carpeta especificada dentro del disco 'public'
-        $storedPath = $file->storeAs($path, $filename, 'public');
+        if (in_array(strtolower($extension), ['jpg', 'jpeg', 'png', 'webp'])) {
+            try {
+                $manager = new \Intervention\Image\ImageManager(new \Intervention\Image\Drivers\Gd\Driver());
+                $image = $manager->read($file);
+                
+                // Ajustar resolución según el tipo
+                $width = ($path === 'logos' || $path === 'avatars') ? 400 : 1200;
+                $image->scale(width: $width);
+                
+                $encoded = $image->toJpeg(80);
+                Storage::disk('public')->put($storedPath, (string) $encoded);
+            } catch (\Exception $e) {
+                $storedPath = $file->storeAs($path, $filename, 'public');
+            }
+        } else {
+            $storedPath = $file->storeAs($path, $filename, 'public');
+        }
 
         return response()->json([
             'message' => 'Archivo subido exitosamente',
-            'path' => $storedPath, // Ruta relativa para guardar en la BD
-            'url' => Storage::disk('public')->url($storedPath), // URL completa para el frontend
+            'path' => $storedPath,
+            'url' => Storage::disk('public')->url($storedPath),
         ], 201);
     }
 }
