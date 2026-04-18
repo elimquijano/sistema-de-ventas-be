@@ -20,6 +20,7 @@ use App\Models\Client;
 use App\Models\Category;
 use App\Models\Expense;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 use App\Services\WhatsAppService;
 
 class SaleController extends Controller
