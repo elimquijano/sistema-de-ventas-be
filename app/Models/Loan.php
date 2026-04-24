@@ -34,6 +34,16 @@ class Loan extends Model
 
     protected $casts = ['loan_date' => 'date', 'due_date' => 'date'];
 
+    /**
+     * Metadatos para las notificaciones.
+     */
+    public function auditMetadata($newValues)
+    {
+        return [
+            'description' => $this->description,
+        ];
+    }
+
     public function business()
     {
         return $this->belongsTo(Business::class);

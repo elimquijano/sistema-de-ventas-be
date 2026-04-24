@@ -142,13 +142,33 @@ class CashRegisterController extends Controller
             return response()->json(['message' => 'No autorizado para esta caja.'], 403);
         }
 
-        // Calcular report_current_cash (efectivo actual en caja: Inicial + Ventas + Inyecciones Manuales)
+        // Cargar las ventas con sus ítems y el modelo del ítem para obtener el costo real
+        $cashRegister->load(['sales.items.item']);
+
+        $totalCost = 0;
+        foreach ($cashRegister->sales as $sale) {
+            // No incluir ventas canceladas en el cálculo de ganancia
+            if ($sale->status === 'cancelled') continue;
+
+            foreach ($sale->items as $item) {
+                // Solo calculamos costo para productos, no servicios
+                if ($item->item_type === \App\Models\Product::class && $item->item) {
+                    $totalCost += ($item->item->cost * $item->quantity);
+                }
+            }
+        }
+
+        // Calcular report_current_cash (efectivo actual en caja: Inicial + Ventas en Efectivo + Inyecciones Manuales)
         $cashRegister->report_current_cash = $cashRegister->initial_amount + $cashRegister->cash_sales_amount + $cashRegister->manual_inflow;
 
         // Calcular la diferencia para el reporte
         $cashRegister->report_difference = $cashRegister->report_current_cash - $cashRegister->expected_amount;
 
-        // Asegurarse de cargar las ventas con sus ítems para el reporte
-        return $cashRegister->load('sales.items');
+        // Calcular Ganancia (Ventas Netas - Costo de Productos)
+        // Ventas Netas = expected_amount - initial_amount - manual_inflow
+        $netSales = $cashRegister->expected_amount - $cashRegister->initial_amount - $cashRegister->manual_inflow;
+        $cashRegister->report_profit = $netSales - $totalCost;
+
+        return response()->json($cashRegister);
     }
 }

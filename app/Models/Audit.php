@@ -97,7 +97,8 @@ class Audit extends Model
                     $paid = $this->new_values['paid_amount'] - ($this->old_values['paid_amount'] ?? 0);
                     $total_paid = $this->new_values['paid_amount'];
                     $pending = $this->new_values['pending_amount'] ?? '0.00';
-                    return "Registró un abono al préstamo. Monto pagado hoy: S/ {$paid}, total pagado: S/ {$total_paid}, pendiente: S/ {$pending}.";
+                    $desc = $this->metadata['description'] ?? 'préstamo';
+                    return "Registró un abono al préstamo '{$desc}'. Monto pagado hoy: S/ {$paid}, total pagado: S/ {$total_paid}, pendiente: S/ {$pending}.";
                 }
 
                 if ($class === 'Credit' && isset($this->new_values['paid_amount'])) {
@@ -105,7 +106,7 @@ class Audit extends Model
                     $total_paid = $this->new_values['paid_amount'];
                     $pending = $this->new_values['pending_amount'] ?? '0.00';
                     $client = $this->metadata['client_name'] ?? 'el cliente';
-                    return "Registró un pago de crédito de S/ {$paid}. Total pagado: S/ {$total_paid}, pendiente: S/ {$pending}.";
+                    return "Registró un pago de crédito de S/ {$paid} para {$client}. Total pagado: S/ {$total_paid}, pendiente: S/ {$pending}.";
                 }
                 
                 $changes = [];

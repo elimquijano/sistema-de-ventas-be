@@ -17,6 +17,8 @@ class Credit extends Model
      * Campos a incluir en la auditoría.
      */
     protected $auditInclude = [
+        'customer_name',
+        'total_amount',
         'paid_amount',
         'pending_amount',
         'status',

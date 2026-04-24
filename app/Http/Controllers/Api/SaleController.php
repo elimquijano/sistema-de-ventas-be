@@ -258,7 +258,7 @@ class SaleController extends Controller
     public function index(Request $request)
     {
         $user = Auth::user();
-        $query = Sale::query()->with(['items', 'client', 'creator', 'business', 'payments']);
+        $query = Sale::query()->with(['items', 'client', 'creator', 'rider', 'business', 'payments']);
 
         if ($user->business_id) {
             $query->where('business_id', $user->business_id);
@@ -309,6 +309,10 @@ class SaleController extends Controller
 
         if ($request->filled('created_by')) {
             $query->where('created_by', $request->created_by);
+        }
+
+        if ($request->filled('rider_id')) {
+            $query->where('rider_id', $request->rider_id);
         }
 
         if ($request->filled('cash_register_id')) {
@@ -714,7 +718,7 @@ class SaleController extends Controller
         $query = Sale::query()
             ->where('status', '!=', 'cancelled')
             ->whereDate('created_at', $date)
-            ->with('items', 'creator');
+            ->with('items', 'creator', 'rider');
 
         if ($user->business_id) {
             $query->where('business_id', $user->business_id);
@@ -741,7 +745,7 @@ class SaleController extends Controller
             ->where('status', '!=', 'cancelled')
             ->whereYear('created_at', $year)
             ->whereMonth('created_at', $month)
-            ->with('items', 'creator');
+            ->with('items', 'creator', 'rider');
 
         if ($user->business_id) {
             $query->where('business_id', $user->business_id);
