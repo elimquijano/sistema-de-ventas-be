@@ -277,8 +277,28 @@ class SaleController extends Controller
             $searchTerm = $request->search;
             $query->where(function ($q) use ($searchTerm) {
                 $q->where('sale_number', 'like', "%{$searchTerm}%")
-                    ->orWhere('customer_name', 'like', "%{$searchTerm}%");
+                    ->orWhere('customer_name', 'like', "%{$searchTerm}%")
+                    ->orWhereHas('rider', function ($riderQuery) use ($searchTerm) {
+                        $riderQuery->where('first_name', 'like', "%{$searchTerm}%")
+                                   ->orWhere('last_name', 'like', "%{$searchTerm}%");
+                    })
+                    ->orWhereHas('creator', function ($creatorQuery) use ($searchTerm) {
+                        $creatorQuery->where('first_name', 'like', "%{$searchTerm}%")
+                                     ->orWhere('last_name', 'like', "%{$searchTerm}%");
+                    });
             });
+        }
+
+        if ($request->filled('rider_id')) {
+            $query->where('rider_id', $request->rider_id);
+        }
+
+        if ($request->filled('created_by')) {
+            $query->where('created_by', $request->created_by);
+        }
+
+        if ($request->filled('status')) {
+            $query->where('status', $request->status);
         }
 
         if ($request->filled('date')) {
@@ -408,6 +428,7 @@ class SaleController extends Controller
                 'status' => ($isDelivery && count($payments) === 0) ? 'pending' : ($hasCredit ? 'debt' : 'completed'),
             ]);
 
+            $totalProfit = 0;
             foreach ($validated['items'] as $itemData) {
                 $modelClass = $itemData['type'] === 'product' ? Product::class : Service::class;
                 $item = $modelClass::findOrFail($itemData['id']);
@@ -417,6 +438,12 @@ class SaleController extends Controller
                         throw new \Exception('Stock insuficiente para el producto: ' . $item->name);
                     }
                     $item->decrement('stock', $itemData['quantity']);
+                    
+                    // Calcular ganancia del producto: (Precio Venta - Costo) * Cantidad
+                    $totalProfit += ($item->price - $item->cost) * $itemData['quantity'];
+                } else {
+                    // Para servicios, la ganancia es el precio total (asumiendo costo 0 o no definido)
+                    $totalProfit += $item->price * $itemData['quantity'];
                 }
 
                 $sale->items()->create([
@@ -432,6 +459,7 @@ class SaleController extends Controller
             // Solo afectar caja si ya está completada o no es delivery fantasma
             if ($sale->status === 'completed' && $cashRegister) {
                 $cashRegister->increment('expected_amount', $totalAmount);
+                $cashRegister->increment('profit', $totalProfit);
 
                 foreach ($payments as $payment) {
                     $sale->payments()->create($payment);
@@ -439,6 +467,7 @@ class SaleController extends Controller
                     if ($payment['payment_method'] === 'cash') {
                         $cashRegister->increment('cash_sales_amount', $payment['amount']);
                     }
+                    // ... (resto del código de descuentos)
 
                     if ($payment['payment_method'] === 'discount') {
                         // Registrar como Gasto automático
@@ -464,6 +493,7 @@ class SaleController extends Controller
             } elseif ($hasCredit && $cashRegister) {
                 // Si es crédito pero POS directo, registramos el crédito pero aún no el efectivo
                 $cashRegister->increment('expected_amount', $totalAmount);
+                $cashRegister->increment('profit', $totalProfit);
                 foreach ($payments as $payment) {
                     $sale->payments()->create($payment);
                     if ($payment['payment_method'] === 'cash') {
@@ -567,6 +597,18 @@ class SaleController extends Controller
             // Decisión: Sumar todo al expected_amount para que el arqueo cuadre con la venta, 
             // pero registrar el descuento como gasto.
             $cashRegister->increment('expected_amount', $sale->total_amount);
+
+            // Calcular ganancia del delivery
+            $saleProfit = 0;
+            foreach ($sale->items as $saleItem) {
+                $item = $saleItem->item;
+                if ($saleItem->item_type === Product::class && $item) {
+                    $saleProfit += ($saleItem->unit_price - $item->cost) * $saleItem->quantity;
+                } elseif ($saleItem->item_type === Service::class) {
+                    $saleProfit += $saleItem->total_price;
+                }
+            }
+            $cashRegister->increment('profit', $saleProfit);
 
             foreach ($validated['payments'] as $index => $payment) {
                 $imagePath = null;
@@ -674,6 +716,18 @@ class SaleController extends Controller
             $cashRegister = $sale->cashRegister;
             if ($cashRegister) {
                 $cashRegister->decrement('expected_amount', $sale->total_amount);
+
+                // Calcular la ganancia que se debe restar
+                $saleProfit = 0;
+                foreach ($sale->items as $saleItem) {
+                    $item = $saleItem->item; // Cargado vía MorphTo
+                    if ($saleItem->item_type === Product::class && $item) {
+                        $saleProfit += ($saleItem->unit_price - $item->cost) * $saleItem->quantity;
+                    } elseif ($saleItem->item_type === Service::class) {
+                        $saleProfit += $saleItem->total_price;
+                    }
+                }
+                $cashRegister->decrement('profit', $saleProfit);
 
                 foreach ($sale->payments as $payment) {
                     if ($payment->payment_method === 'cash') {

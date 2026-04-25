@@ -52,6 +52,7 @@ class CashRegisterController extends Controller
         if ($openRegister) {
             // total_in_cash: Monto inicial + efectivo de ventas + ingresos manuales
             $openRegister->total_in_cash = $openRegister->initial_amount + $openRegister->cash_sales_amount + $openRegister->manual_inflow;
+            // El campo 'profit' ya vendrá en el objeto $openRegister automáticamente
             return response()->json(['success' => true, 'data' => $openRegister]);
         }
         return response()->json(['success' => false, 'message' => 'No hay caja abierta'], 404);

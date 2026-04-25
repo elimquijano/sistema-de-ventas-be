@@ -36,6 +36,11 @@ class CreditController extends Controller
             $query->where('status', $request->status);
         }
 
+        // Filter by date
+        if ($request->filled('date')) {
+            $query->whereDate('created_at', $request->date);
+        }
+
         $perPage = $this->getPaginationSize($request, $query);
         $credits = $query->latest()->paginate($perPage);
 
