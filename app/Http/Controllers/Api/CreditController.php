@@ -4,10 +4,13 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Credit;
+use App\Models\SalePayment;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\ValidationException;
 
 class CreditController extends Controller
 {
@@ -89,16 +92,89 @@ class CreditController extends Controller
     {
         // Gate::authorize('add-credit-payment', $credit);
         $validated = $request->validate([
-            'amount' => 'required|numeric|min:0.01|max:' . $credit->pending_amount,
+            'payments' => 'required|array|min:1',
+            'payments.*.payment_method' => 'required|string|in:cash,yape,plin,card,transfer,discount,vale',
+            'payments.*.amount' => 'required|numeric|min:0.01',
+            'payments.*.reference' => 'nullable|string|max:255',
+            'payments.*.payment_image' => 'nullable|image',
         ]);
 
-        DB::transaction(function () use ($credit, $validated) {
-            // Actualizamos los montos usando el modelo para disparar eventos
-            $credit->paid_amount += $validated['amount'];
-            $credit->pending_amount -= $validated['amount'];
+        $business = Auth::user()->business;
+        $user = Auth::user();
+
+        DB::transaction(function () use ($credit, $validated, $business, $user, $request) {
+            $totalAmount = collect($validated['payments'])->sum('amount');
+
+            // Pequeño margen para evitar problemas de redondeo float
+            if ($totalAmount > $credit->pending_amount + 0.05) {
+                throw ValidationException::withMessages([
+                    'payments' => ['El monto total de los pagos (' . $totalAmount . ') excede el monto pendiente del crédito (' . $credit->pending_amount . ').']
+                ]);
+            }
+
+            $hasCash = collect($validated['payments'])->contains('payment_method', 'cash');
+            $cashRegister = null;
+
+            if ($hasCash) {
+                $cashRegister = $business->cashRegisters()
+                    ->where('status', 'open')
+                    ->where('opened_by', $user->id)
+                    ->first();
+
+                if (!$cashRegister) {
+                    throw ValidationException::withMessages([
+                        'cash_register' => ['No tienes una caja registradora abierta para recibir pagos en efectivo.']
+                    ]);
+                }
+            }
+
+            foreach ($validated['payments'] as $index => $paymentData) {
+                $imagePath = null;
+                if ($request->hasFile("payments.{$index}.payment_image")) {
+                    $file = $request->file("payments.{$index}.payment_image");
+                    $filename = uniqid() . '.jpg';
+                    $imagePath = "payments/{$filename}";
+
+                    try {
+                        // Usar Intervention Image v3 para comprimir
+                        $manager = new \Intervention\Image\ImageManager(new \Intervention\Image\Drivers\Gd\Driver());
+                        $image = $manager->read($file);
+                        
+                        // Redimensionar si es muy grande (max 1200px) manteniendo aspecto
+                        $image->scale(width: 1200);
+                        
+                        // Codificar como JPG con calidad 75% para ahorrar espacio
+                        $encoded = $image->toJpeg(75);
+                        
+                        // Guardar en el disco public
+                        Storage::disk('public')->put($imagePath, (string) $encoded);
+                    } catch (\Exception $e) {
+                        // Si falla el procesamiento, guardar el original como respaldo
+                        $imagePath = $file->store('payments', 'public');
+                    }
+                }
+
+                // Registrar el pago en la venta vinculada
+                $credit->sale->payments()->create([
+                    'amount' => $paymentData['amount'],
+                    'payment_method' => $paymentData['payment_method'],
+                    'reference' => $paymentData['reference'],
+                    'payment_image' => $imagePath,
+                ]);
+
+                if ($paymentData['payment_method'] === 'cash' && $cashRegister) {
+                    // Solo incrementamos la bolsa de cobranza para el efectivo físico
+                    $cashRegister->increment('credit_collections', $paymentData['amount']);
+                }
+
+                // Actualizar los montos usando el modelo para disparar eventos de auditoría
+                $credit->paid_amount += $paymentData['amount'];
+                $credit->pending_amount -= $paymentData['amount'];
+            }
 
             if ($credit->pending_amount <= 0) {
                 $credit->status = 'paid';
+                $credit->pending_amount = 0; // Limpiar cualquier residuo de redondeo
             }
             
             $credit->save();
@@ -109,7 +185,7 @@ class CreditController extends Controller
             }
         });
 
-        return response()->json($credit);
+        return response()->json($credit->load('sale.payments'));
     }
 
     public function getPending(Request $request)

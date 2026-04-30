@@ -11,6 +11,8 @@ class Audit extends Model
 
     protected $guarded = [];
 
+    protected $appends = ['description'];
+
     protected $casts = [
         'old_values' => 'json',
         'new_values' => 'json',
@@ -84,15 +86,52 @@ class Audit extends Model
                     $client = $this->new_values['customer_name'] ?? 'Cliente';
                     return "Generó un crédito de S/ {$amount} para el cliente {$client}.";
                 }
+                if ($class === 'AssetLoan') {
+                    $asset = $meta['asset_name'] ?? 'bien';
+                    $borrower = $this->new_values['borrower_name'] ?? 'alguien';
+                    $qty = $this->new_values['quantity'] ?? '1';
+                    return "Prestó {$qty} unidad(es) de '{$asset}' a '{$borrower}'.";
+                }
+                if ($class === 'SalaryAdvance') {
+                    $amount = $this->new_values['amount'] ?? '0.00';
+                    $user = $meta['user_name'] ?? 'un empleado';
+                    return "Entregó un adelanto de S/ {$amount} a {$user}.";
+                }
+                if ($class === 'PayrollPayment') {
+                    $amount = $this->new_values['final_payment'] ?? '0.00';
+                    $user = $meta['user_name'] ?? 'un empleado';
+                    return "Realizó el pago de planilla de S/ {$amount} a {$user}.";
+                }
+                if ($class === 'Asset') {
+                    $name = $this->new_values['name'] ?? 'Activo';
+                    $qty = $this->new_values['total_quantity'] ?? '0';
+                    return "Registró el ingreso de un nuevo activo al inventario: \"{$name}\" con una cantidad inicial de {$qty} unidades.";
+                }
                 return "Creó " . $this->getFriendlyModelName();
 
             case 'updated':
+                if ($class === 'Asset' && isset($this->new_values['available_quantity'])) {
+                    $old = $this->old_values['available_quantity'] ?? 0;
+                    $new = $this->new_values['available_quantity'];
+                    $diff = abs($new - $old);
+                    $action = ($new < $old) ? "Salida" : "Reingreso";
+                    $reason = ($new < $old) ? "por préstamo" : "por devolución";
+                    return "{$action} de inventario: {$diff} unidad(es) {$reason}. Cantidad actual: {$new}.";
+                }
+
                 if ($class === 'Sale' && isset($this->new_values['status'])) {
                     $status = $this->new_values['status'];
                     $labels = ['completed' => 'Completada/Entregada', 'pending' => 'Pendiente', 'cancelled' => 'Cancelada', 'debt' => 'Deuda'];
                     return "Cambió el estado del pedido a: " . ($labels[$status] ?? $status);
                 }
                 
+                if ($class === 'AssetLoan' && isset($this->new_values['status'])) {
+                    $status = $this->new_values['status'];
+                    $labels = ['returned' => 'Devuelto', 'lost' => 'Perdido', 'damaged' => 'Dañado', 'loaned' => 'Prestado'];
+                    $asset = $meta['asset_name'] ?? 'bien';
+                    return "Actualizó el estado del préstamo de '{$asset}' a: " . ($labels[$status] ?? $status);
+                }
+
                 if ($class === 'Loan' && isset($this->new_values['paid_amount'])) {
                     $paid = $this->new_values['paid_amount'] - ($this->old_values['paid_amount'] ?? 0);
                     $total_paid = $this->new_values['paid_amount'];
@@ -137,6 +176,10 @@ class Audit extends Model
             'User' => 'el usuario',
             'Role' => 'el rol',
             'Permission' => 'el permiso',
+            'Asset' => 'el activo',
+            'AssetLoan' => 'el préstamo de bien',
+            'SalaryAdvance' => 'el adelanto de sueldo',
+            'PayrollPayment' => 'el pago de planilla',
         ];
 
         return $names[$class] ?? strtolower($class);
@@ -154,6 +197,8 @@ class Audit extends Model
             'delivery_notes' => 'las notas de entrega',
             'scheduled_at' => 'la fecha programada',
             'stock' => 'el stock',
+            'available_quantity' => 'la cantidad disponible',
+            'total_quantity' => 'la cantidad total',
             'price' => 'el precio',
             'name' => 'el nombre',
             'description' => 'la descripción',

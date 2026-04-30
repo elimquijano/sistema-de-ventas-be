@@ -13,6 +13,9 @@ use App\Http\Controllers\Api\LoanController;
 use App\Http\Controllers\Api\ModuleController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\PermissionController;
+use App\Http\Controllers\Api\AssetController;
+use App\Http\Controllers\Api\AssetLoanController;
+use App\Http\Controllers\Api\PayrollController;
 use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\PurchaseController;
 use App\Http\Controllers\Api\RoleController;
@@ -125,6 +128,33 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('loans/{loan}/timeline', [LoanController::class, 'timeline']);
     Route::apiResource('loans', LoanController::class)->except(['update']); // Exclude default update if we have a custom one
     Route::post('loans/{loan}', [LoanController::class, 'update']); // For handling form-data if needed, or just use PUT
+
+    // Assets (Bienes)
+    Route::apiResource('assets', AssetController::class);
+    Route::get('assets/{asset}/timeline', [AssetController::class, 'timeline']);
+
+    // Asset Loans (Préstamos de Fierros)
+    Route::get('asset-loans', [AssetLoanController::class, 'index']);
+    Route::post('asset-loans', [AssetLoanController::class, 'store']);
+    Route::get('asset-loans/{assetLoan}', [AssetLoanController::class, 'show']);
+    Route::post('asset-loans/{assetLoan}/return', [AssetLoanController::class, 'returnAsset']);
+    Route::get('asset-loans/{assetLoan}/timeline', [AssetLoanController::class, 'timeline']);
+
+    // Payroll (Planilla, Adelantos y Asistencia)
+    Route::prefix('payroll')->group(function () {
+        Route::post('config/{user}', [PayrollController::class, 'setConfig']);
+        Route::get('config/{user}', [PayrollController::class, 'getConfig']);
+        
+        Route::post('attendance', [PayrollController::class, 'storeAttendance']);
+        Route::get('attendance', [PayrollController::class, 'getAttendance']);
+        
+        Route::post('advances', [PayrollController::class, 'storeAdvance']);
+        Route::get('advances', [PayrollController::class, 'getAdvances']);
+        
+        Route::get('calculate/{user}', [PayrollController::class, 'calculate']);
+        Route::post('pay/{user}', [PayrollController::class, 'pay']);
+        Route::get('payments', [PayrollController::class, 'getPayments']);
+    });
 
     // Subida de archivos
     Route::post('/files/upload', [FileController::class, 'upload']);

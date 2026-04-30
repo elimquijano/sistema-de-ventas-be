@@ -59,6 +59,14 @@ class Client extends Model
     }
 
     /**
+     * Get the assets loaned to the client.
+     */
+    public function assetLoans()
+    {
+        return $this->morphMany(AssetLoan::class, 'borrower');
+    }
+
+    /**
      * Get the business that owns the client.
      */
     public function business()

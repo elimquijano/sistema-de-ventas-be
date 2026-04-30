@@ -86,4 +86,28 @@ class User extends Authenticatable
     {
         return $this->belongsTo(Business::class);
     }
+
+    /** Configuración de nómina del usuario. */
+    public function payrollConfig()
+    {
+        return $this->hasOne(UserPayrollConfig::class);
+    }
+
+    /** Adelantos de sueldo del usuario. */
+    public function salaryAdvances()
+    {
+        return $this->hasMany(SalaryAdvance::class);
+    }
+
+    /** Registros de asistencia del usuario. */
+    public function attendanceLogs()
+    {
+        return $this->hasMany(AttendanceLog::class);
+    }
+
+    /** Activos prestados al usuario. */
+    public function assetLoans()
+    {
+        return $this->morphMany(AssetLoan::class, 'borrower');
+    }
 }

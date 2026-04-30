@@ -70,4 +70,24 @@ class Business extends Model
     {
         return $this->hasMany(Purchase::class);
     }
+
+    public function assets()
+    {
+        return $this->hasMany(Asset::class);
+    }
+
+    public function assetLoans()
+    {
+        return $this->hasMany(AssetLoan::class);
+    }
+
+    public function salaryAdvances()
+    {
+        return $this->hasMany(SalaryAdvance::class);
+    }
+
+    public function attendanceLogs()
+    {
+        return $this->hasMany(AttendanceLog::class);
+    }
 }

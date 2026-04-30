@@ -50,8 +50,8 @@ class CashRegisterController extends Controller
             ->first();
 
         if ($openRegister) {
-            // total_in_cash: Monto inicial + efectivo de ventas + ingresos manuales
-            $openRegister->total_in_cash = $openRegister->initial_amount + $openRegister->cash_sales_amount + $openRegister->manual_inflow;
+            // total_in_cash: Monto inicial + efectivo de ventas + ingresos manuales + cobranza de créditos
+            $openRegister->total_in_cash = $openRegister->initial_amount + $openRegister->cash_sales_amount + $openRegister->manual_inflow + ($openRegister->credit_collections ?? 0);
             // El campo 'profit' ya vendrá en el objeto $openRegister automáticamente
             return response()->json(['success' => true, 'data' => $openRegister]);
         }
@@ -143,32 +143,42 @@ class CashRegisterController extends Controller
             return response()->json(['message' => 'No autorizado para esta caja.'], 403);
         }
 
-        // Cargar las ventas con sus ítems y el modelo del ítem para obtener el costo real
-        $cashRegister->load(['sales.items.item']);
+        // Cargar las ventas con sus ítems y pagos para el desglose
+        $cashRegister->load(['sales.payments', 'sales.items.item']);
 
-        $totalCost = 0;
-        foreach ($cashRegister->sales as $sale) {
-            // No incluir ventas canceladas en el cálculo de ganancia
-            if ($sale->status === 'cancelled') continue;
+        // --- DESGLOSE PARA EL FRONTEND ---
+        
+        // A. Dinero Inicial (Sencillo)
+        $initial = (float) $cashRegister->initial_amount;
+        
+        // B. Ventas del día pagadas en EFECTIVO (Directas)
+        $cashSales = (float) $cashRegister->cash_sales_amount;
+        
+        // C. Cobranza de Créditos (Deudas pasadas cobradas hoy en efectivo)
+        $creditCollections = (float) ($cashRegister->credit_collections ?? 0);
+        
+        // D. Inyecciones Manuales (Dinero metido extra)
+        $manualInflow = (float) $cashRegister->manual_inflow;
 
-            foreach ($sale->items as $item) {
-                // Solo calculamos costo para productos, no servicios
-                if ($item->item_type === \App\Models\Product::class && $item->item) {
-                    $totalCost += ($item->item->cost * $item->quantity);
-                }
-            }
-        }
+        // --- 1. LIQUIDACIÓN DE EFECTIVO (Rendición de cuentas física) ---
+        $cashRegister->report_cash_to_deliver = $initial + $cashSales + $creditCollections + $manualInflow;
 
-        // Calcular report_current_cash (efectivo actual en caja: Inicial + Ventas en Efectivo + Inyecciones Manuales)
-        $cashRegister->report_current_cash = $cashRegister->initial_amount + $cashRegister->cash_sales_amount + $cashRegister->manual_inflow;
+        // --- 2. DESGLOSE DETALLADO (Para que veas de dónde sale cada sol) ---
+        $cashRegister->breakdown = [
+            'initial_amount' => $initial,
+            'direct_cash_sales' => $cashSales,
+            'credit_debt_collections' => $creditCollections,
+            'manual_inflow' => $manualInflow,
+            'total_physical_cash' => $cashRegister->report_cash_to_deliver
+        ];
 
-        // Calcular la diferencia para el reporte
-        $cashRegister->report_difference = $cashRegister->report_current_cash - $cashRegister->expected_amount;
+        // --- 3. VENTAS PURAS DEL DÍA (Para el Dashboard / Ingresos vs Gastos) ---
+        // expected_amount acumula el total de las ventas (Efectivo + Yape + Tarjeta + Crédito generado hoy)
+        // Le restamos el Inicial y el Manual Inflow porque NO son ventas.
+        $cashRegister->report_total_sales = (float) ($cashRegister->expected_amount - $initial - $manualInflow);
 
-        // Calcular Ganancia (Ventas Netas - Costo de Productos)
-        // Ventas Netas = expected_amount - initial_amount - manual_inflow
-        $netSales = $cashRegister->expected_amount - $cashRegister->initial_amount - $cashRegister->manual_inflow;
-        $cashRegister->report_profit = $netSales - $totalCost;
+        // --- 4. GANANCIA (Logística propia del negocio) ---
+        $cashRegister->report_profit = (float) $cashRegister->profit;
 
         return response()->json($cashRegister);
     }
