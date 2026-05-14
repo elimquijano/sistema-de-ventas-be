@@ -22,7 +22,8 @@ class Credit extends Model
         'paid_amount',
         'pending_amount',
         'status',
-        'due_date'
+        'due_date',
+        'created_by'
     ];
 
     /**
@@ -51,5 +52,9 @@ class Credit extends Model
     public function sale()
     {
         return $this->belongsTo(Sale::class);
+    }
+    public function creator()
+    {
+        return $this->belongsTo(User::class, 'created_by');
     }
 }

@@ -75,6 +75,7 @@ class AuditPerformedNotification extends Notification
             'Credit' => 'de crédito',
             'Sale' => 'de venta',
             'Expense' => 'de gasto',
+            'AssetLoan' => 'de préstamo de activo',
         ];
 
         $title = $titles[$event] ?? 'Actividad';

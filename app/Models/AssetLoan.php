@@ -16,6 +16,9 @@ class AssetLoan extends Model
         'asset_id',
         'borrower_name',
         'quantity',
+        'returned_quantity',
+        'damaged_quantity',
+        'lost_quantity',
         'loan_date',
         'due_date',
         'return_date',
@@ -29,6 +32,13 @@ class AssetLoan extends Model
         'due_date' => 'date',
         'return_date' => 'date',
     ];
+
+    protected $appends = ['pending_quantity'];
+
+    public function getPendingQuantityAttribute()
+    {
+        return $this->quantity - ($this->returned_quantity + $this->damaged_quantity + $this->lost_quantity);
+    }
 
     public function business()
     {

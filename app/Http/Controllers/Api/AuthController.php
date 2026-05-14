@@ -37,7 +37,7 @@ class AuthController extends Controller
         $token = $user->createToken('auth-token')->plainTextToken;
 
         return response()->json([
-            'user' => $user->load('roles.permissions'),
+            'user' => $user, //->load('roles.permissions'),
             'token' => $token,
             'permissions' => $user->getAllPermissions()->pluck('name'),
         ]);
@@ -59,7 +59,7 @@ class AuthController extends Controller
         $token = $user->createToken('auth-token')->plainTextToken;
 
         return response()->json([
-            'user' => $user->load('roles.permissions'),
+            'user' => $user, //->load('roles.permissions'),
             'token' => $token,
             'permissions' => $user->getAllPermissions()->pluck('name'),
         ], 201);
@@ -75,7 +75,7 @@ class AuthController extends Controller
     public function me(Request $request)
     {
         return response()->json([
-            'user' => $request->user()->load('roles.permissions'),
+            'user' => $request->user(), //->load('roles.permissions'),
             'permissions' => $request->user()->getAllPermissions()->pluck('name'),
         ]);
     }
@@ -83,7 +83,7 @@ class AuthController extends Controller
     public function updateProfile(Request $request)
     {
         $user = $request->user();
-        
+
         $data = $request->validate([
             'first_name' => 'sometimes|string|max:255',
             'last_name' => 'sometimes|string|max:255',

@@ -17,7 +17,7 @@ class CreditController extends Controller
     public function index(Request $request)
     {
         $user = Auth::user();
-        $query = Credit::query()->with('sale');
+        $query = Credit::query()->with(['sale', 'creator']);
 
         if ($user->business_id) {
             $query->where('business_id', $user->business_id);
@@ -53,7 +53,7 @@ class CreditController extends Controller
     public function show(Credit $credit)
     {
         // Gate::authorize('view-credit', $credit);
-        return $credit->load('sale');
+        return $credit->load(['sale', 'creator']);
     }
 
     public function update(Request $request, Credit $credit)
@@ -94,7 +94,7 @@ class CreditController extends Controller
         $validated = $request->validate([
             'payments' => 'required|array|min:1',
             'payments.*.payment_method' => 'required|string|in:cash,yape,plin,card,transfer,discount,vale',
-            'payments.*.amount' => 'required|numeric|min:0.01',
+            'payments.*.amount' => 'required|numeric|min:0',
             'payments.*.reference' => 'nullable|string|max:255',
             'payments.*.payment_image' => 'nullable|image',
         ]);
@@ -102,10 +102,9 @@ class CreditController extends Controller
         $business = Auth::user()->business;
         $user = Auth::user();
 
-        DB::transaction(function () use ($credit, $validated, $business, $user, $request) {
+        $sale = DB::transaction(function () use ($credit, $validated, $business, $user, $request) {
             $totalAmount = collect($validated['payments'])->sum('amount');
 
-            // Pequeño margen para evitar problemas de redondeo float
             if ($totalAmount > $credit->pending_amount + 0.05) {
                 throw ValidationException::withMessages([
                     'payments' => ['El monto total de los pagos (' . $totalAmount . ') excede el monto pendiente del crédito (' . $credit->pending_amount . ').']
@@ -136,20 +135,12 @@ class CreditController extends Controller
                     $imagePath = "payments/{$filename}";
 
                     try {
-                        // Usar Intervention Image v3 para comprimir
                         $manager = new \Intervention\Image\ImageManager(new \Intervention\Image\Drivers\Gd\Driver());
                         $image = $manager->read($file);
-                        
-                        // Redimensionar si es muy grande (max 1200px) manteniendo aspecto
                         $image->scale(width: 1200);
-                        
-                        // Codificar como JPG con calidad 75% para ahorrar espacio
                         $encoded = $image->toJpeg(75);
-                        
-                        // Guardar en el disco public
                         Storage::disk('public')->put($imagePath, (string) $encoded);
                     } catch (\Exception $e) {
-                        // Si falla el procesamiento, guardar el original como respaldo
                         $imagePath = $file->store('payments', 'public');
                     }
                 }
@@ -163,18 +154,19 @@ class CreditController extends Controller
                 ]);
 
                 if ($paymentData['payment_method'] === 'cash' && $cashRegister) {
-                    // Solo incrementamos la bolsa de cobranza para el efectivo físico
+                    // Solo incrementamos la bolsa de cobranza y el efectivo de ventas para el efectivo físico
                     $cashRegister->increment('credit_collections', $paymentData['amount']);
+                    $cashRegister->increment('cash_sales_amount', $paymentData['amount']);
                 }
 
-                // Actualizar los montos usando el modelo para disparar eventos de auditoría
+                // Actualizar los montos del crédito
                 $credit->paid_amount += $paymentData['amount'];
                 $credit->pending_amount -= $paymentData['amount'];
             }
 
             if ($credit->pending_amount <= 0) {
                 $credit->status = 'paid';
-                $credit->pending_amount = 0; // Limpiar cualquier residuo de redondeo
+                $credit->pending_amount = 0;
             }
             
             $credit->save();
@@ -183,15 +175,17 @@ class CreditController extends Controller
             if ($credit->status === 'paid') {
                 $credit->sale()->update(['status' => 'completed']);
             }
+
+            return $credit->sale;
         });
 
-        return response()->json($credit->load('sale.payments'));
+        return response()->json($sale->load('items', 'payments', 'client', 'rider'));
     }
 
     public function getPending(Request $request)
     {
         $user = Auth::user();
-        $query = Credit::query()->where('status', 'pending')->with('sale');
+        $query = Credit::query()->where('status', 'pending')->with(['sale', 'creator']);
 
         if ($user->business_id) {
             $query->where('business_id', $user->business_id);

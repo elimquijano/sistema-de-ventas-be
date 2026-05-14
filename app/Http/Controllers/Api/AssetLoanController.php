@@ -67,28 +67,50 @@ class AssetLoanController extends Controller
         $this->authorizeBusiness($assetLoan);
 
         if ($assetLoan->status === 'returned') {
-            return response()->json(['message' => 'Este préstamo ya fue devuelto.'], 422);
+            return response()->json(['message' => 'Este préstamo ya fue devuelto en su totalidad.'], 422);
         }
+
+        $pending = $assetLoan->pending_quantity;
 
         $validated = $request->validate([
             'status' => 'required|in:returned,damaged,lost',
+            'quantity' => 'nullable|integer|min:1|max:' . $pending,
             'notes' => 'nullable|string',
         ]);
 
-        DB::transaction(function () use ($assetLoan, $validated) {
-            $assetLoan->update([
-                'status' => $validated['status'],
-                'return_date' => now(),
-                'notes' => $validated['notes'] ?? $assetLoan->notes,
-            ]);
+        $quantityToProcess = $validated['quantity'] ?? $pending;
 
+        DB::transaction(function () use ($assetLoan, $validated, $quantityToProcess) {
+            // Actualizar contadores según el tipo de entrega
             if ($validated['status'] === 'returned') {
-                $assetLoan->asset->increment('available_quantity', $assetLoan->quantity);
+                $assetLoan->increment('returned_quantity', $quantityToProcess);
+                // Solo lo devuelto en buen estado incrementa el stock disponible
+                $assetLoan->asset->increment('available_quantity', $quantityToProcess);
+            } elseif ($validated['status'] === 'damaged') {
+                $assetLoan->increment('damaged_quantity', $quantityToProcess);
+                // Si está dañado, no vuelve al stock disponible pero ya no está prestado
+            } elseif ($validated['status'] === 'lost') {
+                $assetLoan->increment('lost_quantity', $quantityToProcess);
+                // Si se perdió, sale definitivamente del inventario total
+                $assetLoan->asset->decrement('total_quantity', $quantityToProcess);
             }
-            // Si está perdido o dañado, no incrementamos el stock disponible a menos que se repare (otra lógica)
+
+            // Si ya no queda nada pendiente, marcar como devuelto
+            $newPending = $assetLoan->quantity - ($assetLoan->returned_quantity + $assetLoan->damaged_quantity + $assetLoan->lost_quantity);
+
+            $updateData = [
+                'notes' => $validated['notes'] ?? $assetLoan->notes,
+            ];
+
+            if ($newPending <= 0) {
+                $updateData['status'] = 'returned';
+                $updateData['return_date'] = now();
+            }
+
+            $assetLoan->update($updateData);
         });
 
-        return response()->json($assetLoan->load(['asset']));
+        return response()->json($assetLoan->load(['asset', 'creator']));
     }
 
     public function timeline(AssetLoan $assetLoan)

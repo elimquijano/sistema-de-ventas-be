@@ -102,23 +102,9 @@ class Audit extends Model
                     $user = $meta['user_name'] ?? 'un empleado';
                     return "Realizó el pago de planilla de S/ {$amount} a {$user}.";
                 }
-                if ($class === 'Asset') {
-                    $name = $this->new_values['name'] ?? 'Activo';
-                    $qty = $this->new_values['total_quantity'] ?? '0';
-                    return "Registró el ingreso de un nuevo activo al inventario: \"{$name}\" con una cantidad inicial de {$qty} unidades.";
-                }
                 return "Creó " . $this->getFriendlyModelName();
 
             case 'updated':
-                if ($class === 'Asset' && isset($this->new_values['available_quantity'])) {
-                    $old = $this->old_values['available_quantity'] ?? 0;
-                    $new = $this->new_values['available_quantity'];
-                    $diff = abs($new - $old);
-                    $action = ($new < $old) ? "Salida" : "Reingreso";
-                    $reason = ($new < $old) ? "por préstamo" : "por devolución";
-                    return "{$action} de inventario: {$diff} unidad(es) {$reason}. Cantidad actual: {$new}.";
-                }
-
                 if ($class === 'Sale' && isset($this->new_values['status'])) {
                     $status = $this->new_values['status'];
                     $labels = ['completed' => 'Completada/Entregada', 'pending' => 'Pendiente', 'cancelled' => 'Cancelada', 'debt' => 'Deuda'];

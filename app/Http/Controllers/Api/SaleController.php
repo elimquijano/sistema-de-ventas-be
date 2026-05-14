@@ -532,8 +532,8 @@ class SaleController extends Controller
                             'total_amount' => $payment['amount'],
                             'pending_amount' => $payment['amount'],
                             'due_date' => now()->addDays(30),
-                        ]);
-                    }
+                            'created_by' => Auth::id(),
+                        ]);                    }
                 }
             }
 
@@ -674,8 +674,8 @@ class SaleController extends Controller
                         'total_amount' => $payment['amount'],
                         'pending_amount' => $payment['amount'],
                         'due_date' => now()->addDays(30),
-                    ]);
-                }
+                        'created_by' => Auth::id(),
+                    ]);                }
             }
 
             return $sale;

@@ -143,8 +143,11 @@ class CashRegisterController extends Controller
             return response()->json(['message' => 'No autorizado para esta caja.'], 403);
         }
 
-        // Cargar las ventas con sus ítems y pagos para el desglose
-        $cashRegister->load(['sales.payments', 'sales.items.item']);
+        // Cargar las ventas con sus ítems y pagos para el desglose, excluyendo las canceladas
+        $cashRegister->load(['sales' => function ($query) {
+            $query->where('status', '!=', 'cancelled')
+                  ->with(['payments', 'items.item']);
+        }]);
 
         // --- DESGLOSE PARA EL FRONTEND ---
         

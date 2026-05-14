@@ -105,6 +105,7 @@ trait Auditable
             $notifiableModels = [
                 'App\Models\Loan',
                 'App\Models\Credit',
+                'App\Models\AssetLoan',
             ];
 
             // Si es un proxy de Eloquent o tiene otro nombre, normalizamos

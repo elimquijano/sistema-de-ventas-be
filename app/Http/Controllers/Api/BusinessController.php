@@ -11,13 +11,11 @@ use Illuminate\Support\Facades\DB;
 
 class BusinessController extends Controller
 {
-    // ... (index, store, show, update, destroy methods remain the same)
     public function index(Request $request)
     {
         $user = Auth::user();
         $query = Business::query()->with('owner');
 
-        // A non-super admin can only see their own business
         if ($user->business_id) {
             $query->where('id', $user->business_id);
         }
@@ -47,7 +45,8 @@ class BusinessController extends Controller
 
     public function show(Business $business)
     {
-        return $business->load(['products', 'services', 'sales', 'categories']);
+        // No retornar relaciones pesadas para mejorar el rendimiento
+        return $business;
     }
 
     public function update(Request $request, Business $business)
@@ -77,7 +76,6 @@ class BusinessController extends Controller
 
     public function dashboard(Request $request, Business $business)
     {
-        // Set locale to Spanish for date formatting
         DB::statement("SET lc_time_names = 'es_ES'");
 
         $period = $request->input('period', 'week');
@@ -85,69 +83,156 @@ class BusinessController extends Controller
 
         $now = Carbon::now();
         $today = Carbon::today();
-        
-        // Limits for daily/monthly stats using local time
         $startToday = $today->copy()->startOfDay();
         $endToday = $today->copy()->endOfDay();
-        
-        $startMonth = $now->copy()->startOfMonth();
-        $endMonth = $now->copy()->endOfMonth();
 
-        // Stats for top cards
+        // 1. Alertas y Notificaciones (Regidas por el periodo cuando aplique)
         $stats = [
-            'daily_sales' => $business->sales()->where('status', 'completed')->whereBetween('created_at', [$startToday, $endToday])->sum('total_amount'),
-            'monthly_sales' => $business->sales()->where('status', 'completed')->whereBetween('created_at', [$startMonth, $endMonth])->sum('total_amount'),
-            'daily_expenses' => $business->expenses()->whereDate('expense_date', $today)->sum('amount'),
-            'monthly_expenses' => $business->expenses()->whereMonth('expense_date', $now->month)->whereYear('expense_date', $now->year)->sum('amount'),
             'products_low_stock' => $business->products()->whereColumn('stock', '<=', 'min_stock')->count(),
             'pending_credits' => $business->credits()->where('status', 'pending')->count(),
-            'cash_in_register' => $business->cashRegisters()->where('status', 'open')->sum(DB::raw('initial_amount + cash_sales_amount')),
+            'active_asset_loans' => $business->assetLoans()->where('status', 'loaned')->count(), // Bienes prestados actualmente
+            'period_asset_loans' => $business->assetLoans()->whereBetween('created_at', [$startDate, $endDate])->count(), // Bienes prestados en el periodo
         ];
 
-        // Data for charts
+        // 2. Histogramas (Ventas vs Gastos en el periodo)
         $salesData = $this->getChartData($business, 'sales', $period, $startDate, $endDate);
         $expensesData = $this->getChartData($business, 'expenses', $period, $startDate, $endDate);
 
-        // Totals for pie chart
-        $totalSalesForPeriod = $salesData->sum('value');
-        $totalExpensesForPeriod = $expensesData->sum('value');
+        // 3. Ganancia Neta y Promedios (Basado en cajas cuyo inicio está en el periodo)
+        $profitStats = $business->cashRegisters()
+            ->whereBetween('opened_at', [$startDate, $endDate])
+            ->select(
+                DB::raw('SUM(profit) as total_profit'),
+                DB::raw('AVG(profit) as avg_profit'),
+                DB::raw('COUNT(*) as total_registers')
+            )->first();
 
-        // Top products (last 30 days)
+        // 4. Ganancia por Usuario (Profit por caja iniciada por usuario en el periodo)
+        $profitByUser = DB::table('cash_registers')
+            ->join('users', 'cash_registers.opened_by', '=', 'users.id')
+            ->select(
+                DB::raw("CONCAT(users.first_name, ' ', users.last_name) as name"),
+                DB::raw('SUM(cash_registers.profit) as value')
+            )
+            ->where('cash_registers.business_id', $business->id)
+            ->whereBetween('cash_registers.opened_at', [$startDate, $endDate])
+            ->groupBy('users.id', 'users.first_name', 'users.last_name')
+            ->orderBy('value', 'desc')
+            ->get();
+
+        // 5. Gasto por Categoría (En qué se gasta más en el periodo)
+        $expensesByCategory = DB::table('expenses')
+            ->join('categories', 'expenses.category_id', '=', 'categories.id')
+            ->select('categories.name as name', DB::raw('SUM(expenses.amount) as value'))
+            ->where('expenses.business_id', $business->id)
+            ->whereBetween('expenses.expense_date', [$startDate, $endDate])
+            ->whereNull('expenses.deleted_at')
+            ->groupBy('categories.id', 'categories.name')
+            ->orderBy('value', 'desc')
+            ->get();
+
+        // 6. Formas de Pago (Distribución según el periodo)
+        $paymentMethods = DB::table('sale_payments')
+            ->join('sales', 'sale_payments.sale_id', '=', 'sales.id')
+            ->select('sale_payments.payment_method as name', DB::raw('SUM(sale_payments.amount) as value'))
+            ->where('sales.business_id', $business->id)
+            ->whereBetween('sales.created_at', [$startDate, $endDate])
+            ->whereNull('sales.deleted_at')
+            ->whereNull('sale_payments.deleted_at')
+            ->groupBy('sale_payments.payment_method')
+            ->get();
+
+        // 7. Top 5 Productos (Ajustado al periodo)
         $topProducts = DB::table('sale_items')
             ->join('sales', 'sale_items.sale_id', '=', 'sales.id')
             ->select('sale_items.item_name as name', DB::raw('SUM(sale_items.quantity) as quantity'), DB::raw('SUM(sale_items.total_price) as revenue'))
             ->where('sales.business_id', $business->id)
             ->where('sales.status', 'completed')
+            ->whereBetween('sales.created_at', [$startDate, $endDate])
             ->whereNull('sales.deleted_at')
             ->whereNull('sale_items.deleted_at')
-            ->where('sales.created_at', '>=', $now->copy()->subDays(30))
             ->where('sale_items.item_type', 'App\\Models\\Product')
             ->groupBy('sale_items.item_name')->orderBy('revenue', 'desc')->limit(5)->get();
 
-        // Recent activities
-        $recentActivities = $this->getRecentActivities($business);
+        // 8. Top 5 Clientes (Ajustado al periodo)
+        $topClients = DB::table('sales')
+            ->select('customer_name as name', DB::raw('SUM(total_amount) as value'), DB::raw('COUNT(*) as orders'))
+            ->where('business_id', $business->id)
+            ->where('status', 'completed')
+            ->whereBetween('created_at', [$startDate, $endDate])
+            ->whereNull('deleted_at')
+            ->groupBy('customer_name')
+            ->orderBy('value', 'desc')
+            ->limit(5)
+            ->get();
 
-        // Cash register status
+        // 9. Comparativa con Periodo Anterior
+        $comparison = $this->getPeriodComparison($business, $period, $startDate, $endDate);
+
+        // 10. Cajas de Hoy (Se mantiene como "Hoy" por ser operativo inmediato)
         $cashRegistersToday = $business->cashRegisters()
-            ->with('openedBy:id,first_name,last_name') // Eager load user info
+            ->with('openedBy:id,first_name,last_name')
             ->whereBetween('opened_at', [$startToday, $endToday])
             ->orderBy('opened_at', 'desc')
             ->get();
 
         return response()->json([
-            'stats' => $stats,
-            'chart_data' => [
-                'sales' => $salesData,
-                'expenses' => $expensesData,
+            'period_info' => [
+                'label' => $period,
+                'start' => $startDate->toDateTimeString(),
+                'end' => $endDate->toDateTimeString(),
             ],
-            'pie_chart_data' => [
-                ['name' => 'Ventas', 'value' => $totalSalesForPeriod],
-                ['name' => 'Gastos', 'value' => $totalExpensesForPeriod],
+            'stats' => $stats,
+            'financials' => [
+                'net_profit' => (float) ($profitStats->total_profit ?? 0),
+                'avg_profit_per_register' => (float) ($profitStats->avg_profit ?? 0),
+                'total_sales' => $salesData->sum('value'),
+                'total_expenses' => $expensesData->sum('value'),
+                'growth_comparison' => $comparison,
+            ],
+            'charts' => [
+                'histogram' => [
+                    'sales' => $salesData,
+                    'expenses' => $expensesData,
+                ],
+                'profit_by_user' => $profitByUser,
+                'expenses_by_category' => $expensesByCategory,
+                'payment_methods' => $paymentMethods,
+                'top_clients' => $topClients,
             ],
             'top_products' => $topProducts,
-            'recent_activities' => $recentActivities,
             'cash_registers_today' => $cashRegistersToday,
         ]);
+    }
+
+    private function getPeriodComparison($business, $period, $startDate, $endDate)
+    {
+        $diff = $startDate->diffInDays($endDate) + 1;
+        $prevStartDate = $startDate->copy()->subDays($diff);
+        $prevEndDate = $endDate->copy()->subDays($diff);
+
+        $currentSales = DB::table('sales')
+            ->where('business_id', $business->id)
+            ->where('status', 'completed')
+            ->whereBetween('created_at', [$startDate, $endDate])
+            ->whereNull('deleted_at')
+            ->sum('total_amount');
+
+        $prevSales = DB::table('sales')
+            ->where('business_id', $business->id)
+            ->where('status', 'completed')
+            ->whereBetween('created_at', [$prevStartDate, $prevEndDate])
+            ->whereNull('deleted_at')
+            ->sum('total_amount');
+
+        $growth = $prevSales > 0 ? (($currentSales - $prevSales) / $prevSales) * 100 : ($currentSales > 0 ? 100 : 0);
+
+        return [
+            'current_sales' => (float) $currentSales,
+            'previous_sales' => (float) $prevSales,
+            'growth_percentage' => round($growth, 2),
+            'trend' => $growth >= 0 ? 'up' : 'down',
+        ];
     }
 
     private function getDateRange($period, $timezone = null)
@@ -170,15 +255,11 @@ class BusinessController extends Controller
     private function getChartData($business, $type, $period, $startDate, $endDate)
     {
         $table = $type === 'sales' ? 'sales' : 'expenses';
-        $dateColumn = 'created_at';
+        $dateColumn = $type === 'sales' ? 'created_at' : 'expense_date';
         $amountColumn = $type === 'sales' ? 'total_amount' : 'amount';
 
-        // Usamos las fechas directamente según la zona horaria de la aplicación
         $start = $startDate->toDateTimeString();
         $end = $endDate->toDateTimeString();
-
-        // Usamos directamente la columna created_at sin restar horas manualmente
-        $dbDateExpr = 'created_at';
 
         $query = DB::table($table)
             ->where('business_id', $business->id)
@@ -191,25 +272,25 @@ class BusinessController extends Controller
 
         $selectSQL = '';
         $groupBySQL = '';
-        $orderBySQL = "MIN({$dbDateExpr})";
+        $orderBySQL = "MIN({$dateColumn})";
 
         switch ($period) {
             case 'day':
-                $selectSQL = "DATE_FORMAT({$dbDateExpr}, '%H:00') as label, SUM({$amountColumn}) as value";
+                $selectSQL = "DATE_FORMAT({$dateColumn}, '%H:00') as label, SUM({$amountColumn}) as value";
                 $groupBySQL = 'label';
                 break;
             case 'week':
-                $selectSQL = "DATE_FORMAT({$dbDateExpr}, '%W') as label, SUM({$amountColumn}) as value";
+                $selectSQL = "DATE_FORMAT({$dateColumn}, '%W') as label, SUM({$amountColumn}) as value";
                 $groupBySQL = 'label';
                 break;
             case 'month':
-                $selectSQL = "DATE_FORMAT({$dbDateExpr}, '%d %b') as label, SUM({$amountColumn}) as value";
+                $selectSQL = "DATE_FORMAT({$dateColumn}, '%d %b') as label, SUM({$amountColumn}) as value";
                 $groupBySQL = 'label';
                 break;
             case 'year':
-                $selectSQL = "DATE_FORMAT({$dbDateExpr}, '%M') as label, SUM({$amountColumn}) as value";
+                $selectSQL = "DATE_FORMAT({$dateColumn}, '%M') as label, SUM({$amountColumn}) as value";
                 $groupBySQL = 'label';
-                $orderBySQL = "MIN(MONTH({$dbDateExpr}))";
+                $orderBySQL = "MIN(MONTH({$dateColumn}))";
                 break;
         }
 
@@ -218,7 +299,6 @@ class BusinessController extends Controller
             ->orderBy(DB::raw($orderBySQL), 'asc')
             ->get();
 
-        // Post-process to fill missing dates
         return $this->fillMissingChartData($data, $period, $startDate, $endDate);
     }
 
@@ -239,7 +319,6 @@ class BusinessController extends Controller
                     $increment = 'addDay';
                     break;
                 case 'month':
-                    // We strip the trailing dot from Carbon's abbreviated month if it exists
                     $label = rtrim($currentDate->locale('es')->isoFormat('DD MMM'), '.');
                     $increment = 'addDay';
                     break;
@@ -249,7 +328,6 @@ class BusinessController extends Controller
                     break;
             }
 
-            // Find matching data or default to 0
             $existing = $data->first(function ($item) use ($label) {
                 return strtolower(trim($item->label)) === strtolower(trim($label));
             });
@@ -263,30 +341,5 @@ class BusinessController extends Controller
         }
 
         return $filledData;
-    }
-
-    private function getRecentActivities($business, $timezone = 'UTC')
-    {
-        $sales = $business->sales()->latest()->limit(5)->get()->toBase()->map(function ($sale) {
-            return [
-                'type' => 'sale',
-                'description' => "Venta #{$sale->sale_number} a {$sale->customer_name}",
-                'amount' => $sale->total_amount,
-                'time' => $sale->created_at->locale('es')->diffForHumans(),
-                'created_at' => $sale->created_at,
-            ];
-        });
-
-        $expenses = $business->expenses()->latest()->limit(5)->get()->toBase()->map(function ($expense) {
-            return [
-                'type' => 'expense',
-                'description' => "Gasto: {$expense->description}",
-                'amount' => -$expense->amount,
-                'time' => $expense->created_at->locale('es')->diffForHumans(),
-                'created_at' => $expense->created_at,
-            ];
-        });
-
-        return $sales->merge($expenses)->sortByDesc('created_at')->take(5)->values();
     }
 }
