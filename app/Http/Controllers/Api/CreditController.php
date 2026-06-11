@@ -129,8 +129,11 @@ class CreditController extends Controller
 
             foreach ($validated['payments'] as $index => $paymentData) {
                 $imagePath = null;
-                if ($request->hasFile("payments.{$index}.payment_image")) {
-                    $file = $request->file("payments.{$index}.payment_image");
+                
+                // Extraer el archivo directamente de los datos validados
+                $file = $paymentData['payment_image'] ?? null;
+
+                if ($file && $file instanceof \Illuminate\Http\UploadedFile) {
                     $filename = uniqid() . '.jpg';
                     $imagePath = "payments/{$filename}";
 
