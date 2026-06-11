@@ -115,16 +115,16 @@ class SaleController extends Controller
 
             // 6. Preparar Mensaje para el Repartidor (WhatsApp)
             // Solo enviar si el pedido no es de hace más de 15 minutos (para evitar duplicados en sincronización)
-            $scheduledAt = Carbon::parse($sale->scheduled_at);
-            if ($scheduledAt->isAfter(now()->subMinutes(15))) {
-                $whatsappMsg = $this->whatsappService->formatSaleMessage($sale);
+            //$scheduledAt = Carbon::parse($sale->scheduled_at);
+            //if ($scheduledAt->isAfter(now()->subMinutes(15))) {
+            $whatsappMsg = $this->whatsappService->formatSaleMessage($sale);
 
-                // Buscar teléfono del rider
-                $rider = User::find($validated['rider_id']);
-                if ($rider && $rider->phone) {
-                    $this->whatsappService->sendMessage($rider->phone, $whatsappMsg);
-                }
+            // Buscar teléfono del rider
+            $rider = User::find($validated['rider_id']);
+            if ($rider && $rider->phone) {
+                $this->whatsappService->sendMessage($rider->phone, $whatsappMsg);
             }
+            //}
 
             return $sale;
         });
@@ -173,14 +173,14 @@ class SaleController extends Controller
             // Si cambió el monto O la cantidad, recalculamos el precio unitario
             if ($item && (isset($validated['total_amount']) || isset($validated['quantity']))) {
                 $newTotalAmount = isset($validated['total_amount']) ? $validated['total_amount'] : $sale->total_amount;
-                
+
                 $unitPrice = $newTotalAmount / $item->quantity;
                 $item->update([
                     'unit_price' => $unitPrice,
                     'total_price' => $newTotalAmount,
                     'quantity' => $item->quantity,
                 ]);
-                
+
                 $sale->total_amount = $newTotalAmount;
             }
 
@@ -191,10 +191,10 @@ class SaleController extends Controller
                     $rider = User::find($validated['rider_id']);
 
                     // Solo enviar si el pedido no es de hace más de 15 minutos (para evitar duplicados en sincronización)
-                    $scheduledAtValue = $validated['scheduled_at'] ?? $sale->scheduled_at;
-                    $scheduledAt = Carbon::parse($scheduledAtValue);
+                    //$scheduledAtValue = $validated['scheduled_at'] ?? $sale->scheduled_at;
+                    //$scheduledAt = Carbon::parse($scheduledAtValue);
 
-                    if ($scheduledAt->isAfter(now()->subMinutes(15)) && $rider && $rider->phone) {
+                    if (/*$scheduledAt->isAfter(now()->subMinutes(15)) &&*/$rider && $rider->phone) {
                         $whatsappMsg = $this->whatsappService->formatSaleMessage($sale);
                         $this->whatsappService->sendMessage($rider->phone, $whatsappMsg);
                     }
@@ -265,13 +265,11 @@ class SaleController extends Controller
         }
 
         // Filtro de Seguridad: Solo ver lo que creé o lo que me asignaron como rider
-        // A menos que sea administrador del negocio (suponiendo rol 'admin' o 'owner')
-        if (!$user->hasRole(['admin', 'owner'])) {
-            $query->where(function ($q) use ($user) {
-                $q->where('created_by', $user->id)
-                  ->orWhere('rider_id', $user->id);
-            });
-        }
+        $query->where(function ($q) use ($user) {
+            $q->where('created_by', $user->id)
+                ->orWhere('rider_id', $user->id);
+        });
+
 
         if ($request->filled('search')) {
             $searchTerm = $request->search;
@@ -280,11 +278,11 @@ class SaleController extends Controller
                     ->orWhere('customer_name', 'like', "%{$searchTerm}%")
                     ->orWhereHas('rider', function ($riderQuery) use ($searchTerm) {
                         $riderQuery->where('first_name', 'like', "%{$searchTerm}%")
-                                   ->orWhere('last_name', 'like', "%{$searchTerm}%");
+                            ->orWhere('last_name', 'like', "%{$searchTerm}%");
                     })
                     ->orWhereHas('creator', function ($creatorQuery) use ($searchTerm) {
                         $creatorQuery->where('first_name', 'like', "%{$searchTerm}%")
-                                     ->orWhere('last_name', 'like', "%{$searchTerm}%");
+                            ->orWhere('last_name', 'like', "%{$searchTerm}%");
                     });
             });
         }
@@ -438,7 +436,7 @@ class SaleController extends Controller
                         throw new \Exception('Stock insuficiente para el producto: ' . $item->name);
                     }
                     $item->decrement('stock', $itemData['quantity']);
-                    
+
                     // Calcular ganancia del producto: (Precio Venta - Costo) * Cantidad
                     $totalProfit += ($item->price - $item->cost) * $itemData['quantity'];
                 } else {
@@ -533,7 +531,8 @@ class SaleController extends Controller
                             'pending_amount' => $payment['amount'],
                             'due_date' => now()->addDays(30),
                             'created_by' => Auth::id(),
-                        ]);                    }
+                        ]);
+                    }
                 }
             }
 
@@ -554,7 +553,7 @@ class SaleController extends Controller
             'payments.*.payment_method' => 'required|string|in:cash,credit,yape,plin,card,transfer,discount,vale', // Se añade 'vale'
             'payments.*.amount' => 'required|numeric|min:0',
             'payments.*.reference' => 'nullable|string|max:255',
-            'payments.*.payment_image' => 'nullable|image',// |max:2048', // Se añade imagen
+            'payments.*.payment_image' => 'nullable|image', // |max:2048', // Se añade imagen
         ]);
 
         $business = Auth::user()->business;
@@ -621,13 +620,13 @@ class SaleController extends Controller
                         // Usar Intervention Image v3 para comprimir
                         $manager = new \Intervention\Image\ImageManager(new \Intervention\Image\Drivers\Gd\Driver());
                         $image = $manager->read($file);
-                        
+
                         // Redimensionar si es muy grande (max 1200px) manteniendo aspecto
                         $image->scale(width: 1200);
-                        
+
                         // Codificar como JPG con calidad 75% para ahorrar espacio
                         $encoded = $image->toJpeg(75);
-                        
+
                         // Guardar en el disco public
                         Storage::disk('public')->put($imagePath, (string) $encoded);
                     } catch (\Exception $e) {
@@ -675,7 +674,8 @@ class SaleController extends Controller
                         'pending_amount' => $payment['amount'],
                         'due_date' => now()->addDays(30),
                         'created_by' => Auth::id(),
-                    ]);                }
+                    ]);
+                }
             }
 
             return $sale;
@@ -731,7 +731,12 @@ class SaleController extends Controller
 
                 foreach ($sale->payments as $payment) {
                     if ($payment->payment_method === 'cash') {
-                        $cashRegister->decrement('cash_sales_amount', $payment->amount);
+                        // Distinguir entre venta directa y cobranza de crédito mediante el prefijo en reference
+                        if ($payment->reference && str_starts_with($payment->reference, 'Cobranza:')) {
+                            $cashRegister->decrement('credit_collections', $payment->amount);
+                        } else {
+                            $cashRegister->decrement('cash_sales_amount', $payment->amount);
+                        }
                     }
                 }
             }
@@ -779,12 +784,11 @@ class SaleController extends Controller
         }
 
         // Filtro de Seguridad
-        if (!$user->hasRole(['admin', 'owner'])) {
-            $query->where(function ($q) use ($user) {
-                $q->where('created_by', $user->id)
-                  ->orWhere('rider_id', $user->id);
-            });
-        }
+        $query->where(function ($q) use ($user) {
+            $q->where('created_by', $user->id)
+                ->orWhere('rider_id', $user->id);
+        });
+
 
         $sales = $query->latest('id')->get();
 
@@ -806,12 +810,11 @@ class SaleController extends Controller
         }
 
         // Filtro de Seguridad
-        if (!$user->hasRole(['admin', 'owner'])) {
-            $query->where(function ($q) use ($user) {
-                $q->where('created_by', $user->id)
-                  ->orWhere('rider_id', $user->id);
-            });
-        }
+        $query->where(function ($q) use ($user) {
+            $q->where('created_by', $user->id)
+                ->orWhere('rider_id', $user->id);
+        });
+
 
         $perPage = $this->getPaginationSize($request, $query);
         $sales = $query->latest('id')->paginate($perPage);

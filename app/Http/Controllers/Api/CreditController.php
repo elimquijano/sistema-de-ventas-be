@@ -149,14 +149,13 @@ class CreditController extends Controller
                 $credit->sale->payments()->create([
                     'amount' => $paymentData['amount'],
                     'payment_method' => $paymentData['payment_method'],
-                    'reference' => $paymentData['reference'],
+                    'reference' => 'Cobranza: ' . ($paymentData['reference'] ?? ''),
                     'payment_image' => $imagePath,
                 ]);
 
                 if ($paymentData['payment_method'] === 'cash' && $cashRegister) {
-                    // Solo incrementamos la bolsa de cobranza y el efectivo de ventas para el efectivo físico
+                    // Solo incrementamos la bolsa de cobranza, ya no duplicamos en cash_sales_amount
                     $cashRegister->increment('credit_collections', $paymentData['amount']);
-                    $cashRegister->increment('cash_sales_amount', $paymentData['amount']);
                 }
 
                 // Actualizar los montos del crédito
