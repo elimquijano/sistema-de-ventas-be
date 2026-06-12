@@ -5,253 +5,327 @@
     <meta charset="UTF-8">
     <title>Boleta de Venta - {{ $sale->sale_number }}</title>
     <style>
-            @page {
-                margin: 10px;
-            }
-    
-            body {
-                font-family: 'Inter', 'Helvetica', sans-serif;
-                font-size: 10px;
-                color: #333;
-                margin: 0;
-                padding: 0;
-            }
-    
-            .receipt-container {
-                width: 100%;
-            }
-    
-            .header {
-                text-align: center;
-                margin-bottom: 20px;
-            }
-    
-            .header img {
-                max-width: 120px;
-                max-height: 60px;
-                margin-bottom: 10px;
-            }
-    
-            .header h1 {
-                margin: 0;
-                font-size: 16px;
-                font-weight: 700;
-                color: #2c5282; /* Un azul corporativo */
-            }
-    
-            .header p {
-                margin: 2px 0;
-                font-size: 9px;
-                line-height: 1.4;
-            }
-    
-            .receipt-title {
-                text-align: center;
-                font-size: 14px;
-                font-weight: 700;
-                margin-bottom: 15px;
-                padding-bottom: 5px;
-                border-bottom: 1px dashed #888;
-            }
-            
-            .details, .customer {
-                margin-bottom: 15px;
-                font-size: 10px;
-            }
-    
-            .details table, .customer table {
-                width: 100%;
-                border-collapse: collapse;
-            }
-            
-            .details td, .customer td {
-                padding: 1px 0;
-            }
-            
-            .details .label, .customer .label {
-                font-weight: 600;
-                color: #555;
-                width: 90px;
-            }
-    
-            .items-table {
-                width: 100%;
-                border-collapse: collapse;
-                margin-bottom: 15px;
-                font-family: 'Menlo', 'Courier New', monospace;
-            }
-    
-            .items-table thead th {
-                font-weight: 700;
-                text-align: left;
-                padding-bottom: 8px;
-                border-bottom: 1px solid #000;
-            }
-    
-            .items-table tbody td {
-                padding: 8px 0;
-                border-bottom: 1px dashed #ccc;
-            }
-            
-            .items-table .item-name {
-                font-weight: 600;
-            }
-            
-            .items-table .item-details {
-                font-size: 9px;
-                color: #444;
-            }
-    
-            .items-table .text-right {
-                text-align: right;
-            }
-    
-            .totals {
-                margin-top: 15px;
-                font-size: 11px;
-            }
-            
-            .totals table {
-                width: 100%;
-            }
-    
-            .totals td {
-                padding: 3px 0;
-            }
-            
-            .totals .label {
-                font-weight: 600;
-            }
-            
-            .totals .amount {
-                text-align: right;
-            }
-            
-            .totals .grand-total .label,
-            .totals .grand-total .amount {
-                font-weight: 700;
-                font-size: 13px;
-            }
-    
-            .footer {
-                text-align: center;
-                margin-top: 20px;
-                font-size: 9px;
-                color: #777;
-            }
-    
-            .footer .qr-code {
-                margin-top: 15px;
-            }
-    
-            .footer .qr-code img {
-                width: 100px;
-                height: 100px;
-            }
-        </style>
-    </head>
-    
-    <body>
-        <div class="receipt-container">
-            <div class="header">
-                @if ($business->logo_path)
+        @page {
+            margin: 8px;
+        }
+
+        body {
+            font-family: 'Helvetica', 'Arial', sans-serif;
+            font-size: 9px;
+            color: #1a202c;
+            margin: 0;
+            padding: 0;
+            line-height: 1.2;
+        }
+
+        .receipt-container {
+            width: 100%;
+        }
+
+        /* Header Styles */
+        .business-header {
+            text-align: center;
+            margin-bottom: 12px;
+            border-bottom: 1px solid #e2e8f0;
+            padding-bottom: 8px;
+        }
+
+        .logo-container {
+            margin-bottom: 6px;
+        }
+
+        .logo-container img {
+            max-width: 100px;
+            max-height: 50px;
+            object-fit: contain;
+        }
+
+        .business-name {
+            font-size: 13px;
+            font-weight: bold;
+            text-transform: uppercase;
+            margin: 0 0 3px 0;
+            color: #2d3748;
+        }
+
+        .business-info {
+            font-size: 8.5px;
+            color: #4a5568;
+            margin: 0;
+        }
+
+        /* Document Type Box */
+        .document-box {
+            border: 1.5px solid #2d3748;
+            text-align: center;
+            padding: 8px;
+            margin: 10px 0;
+            border-radius: 4px;
+            background-color: #f7fafc;
+        }
+
+        .document-box .ruc {
+            font-size: 11px;
+            font-weight: bold;
+            margin-bottom: 3px;
+        }
+
+        .document-box .type {
+            font-size: 10px;
+            font-weight: bold;
+            text-transform: uppercase;
+            display: block;
+            margin: 4px 0;
+        }
+
+        .document-box .number {
+            font-size: 11px;
+            font-weight: bold;
+        }
+
+        /* Section details */
+        .section {
+            margin-bottom: 10px;
+        }
+
+        .info-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .info-table td {
+            padding: 2px 0;
+            vertical-align: top;
+        }
+
+        .info-table .label {
+            font-weight: bold;
+            width: 55px;
+            color: #4a5568;
+        }
+
+        /* Items Table */
+        .items-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 10px 0;
+        }
+
+        .items-table thead th {
+            font-weight: bold;
+            text-align: left;
+            padding: 6px 0;
+            border-top: 1px solid #2d3748;
+            border-bottom: 1px solid #2d3748;
+            font-size: 8.5px;
+            text-transform: uppercase;
+        }
+
+        .items-table tbody td {
+            padding: 6px 0;
+            border-bottom: 1px solid #edf2f7;
+            vertical-align: top;
+        }
+
+        .items-table .qty {
+            width: 25px;
+            text-align: center;
+        }
+
+        .items-table .description {
+            padding-left: 5px;
+        }
+
+        .items-table .price {
+            text-align: right;
+            width: 50px;
+        }
+
+        .items-table .item-name {
+            font-weight: bold;
+            display: block;
+            margin-bottom: 1px;
+        }
+
+        .items-table .item-meta {
+            font-size: 8px;
+            color: #718096;
+        }
+
+        /* Totals Section */
+        .totals-container {
+            margin-top: 8px;
+            border-top: 1px solid #2d3748;
+            padding-top: 6px;
+        }
+
+        .totals-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .totals-table td {
+            padding: 2px 0;
+        }
+
+        .totals-table .label {
+            text-align: right;
+            padding-right: 10px;
+            color: #4a5568;
+        }
+
+        .totals-table .amount {
+            text-align: right;
+            font-weight: bold;
+            width: 70px;
+        }
+
+        .totals-table .grand-total td {
+            padding-top: 5px;
+            font-size: 11px;
+        }
+
+        /* Footer */
+        .footer {
+            text-align: center;
+            margin-top: 15px;
+            padding-top: 10px;
+            border-top: 1px dashed #cbd5e0;
+        }
+
+        .payment-method {
+            margin-bottom: 8px;
+            font-weight: bold;
+            text-transform: uppercase;
+            font-size: 8.5px;
+        }
+
+        .qr-section {
+            margin-top: 10px;
+        }
+
+        .qr-section img {
+            width: 80px;
+            height: 80px;
+        }
+
+        .qr-text {
+            font-size: 7.5px;
+            color: #718096;
+            margin-top: 4px;
+        }
+
+        .thanks {
+            font-weight: bold;
+            margin-top: 10px;
+            font-size: 9px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="receipt-container">
+        <!-- Header -->
+        <div class="business-header">
+            @if ($business->logo_path)
+                <div class="logo-container">
                     <img src="{{ storage_path('app/public/' . $business->logo_path) }}" alt="Logo">
-                @endif
-                <h1>{{ $business->name }}</h1>
-                <p>{{ $business->address }}</p>
-                <p>Tel: {{ $business->phone }} | Email: {{ $business->email }}</p>
-            </div>
-    
-            <div class="receipt-title">
-                BOLETA DE VENTA ELECTRÓNICA
-            </div>
-    
-            <div class="details">
-                <table>
-                    <tr>
-                        <td class="label">Recibo No:</td>
-                        <td>{{ $sale->sale_number }}</td>
-                    </tr>
-                    <tr>
-                        <td class="label">Fecha:</td>
-                        <td>{{ \Carbon\Carbon::parse($sale->created_at)->format('d/m/Y h:i A') }}</td>
-                    </tr>
-                    <tr>
-                        <td class="label">Atendido por:</td>
-                        <td>{{ $sale->creator->full_name }}</td>
-                    </tr>
-                </table>
-            </div>
-    
-            <div class="customer">
-                <table>
-                    <tr>
-                        <td class="label">Cliente:</td>
-                        <td>{{ $sale->customer_name }}</td>
-                    </tr>
-                </table>
-            </div>
-    
-            <table class="items-table">
-                <thead>
-                    <tr>
-                        <th>Descripción</th>
-                        <th class="text-right">Total</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach ($sale->items as $item)
-                        <tr>
-                            <td colspan="2">
-                                <div class="item-name">{{ $item->item_name }}</div>
-                                <div class="item-details">
-                                    {{ $item->quantity }} x {{ number_format($item->unit_price, 2) }}
-                                </div>
-                            </td>
-                        </tr>
-                        <tr>
-                            <td colspan="2" class="text-right">{{ number_format($item->total_price, 2) }}</td>
-                        </tr>
-                    @endforeach
-                </tbody>
-            </table>
-    
-            <div class="totals">
-                <table>
-                    <tr>
-                        <td class="label">Subtotal:</td>
-                        <td class="amount">{{ number_format($sale->total_amount / 1.18, 2) }}</td>
-                    </tr>
-                    <tr>
-                        <td class="label">IGV (18%):</td>
-                        <td class="amount">{{ number_format($sale->total_amount - ($sale->total_amount / 1.18), 2) }}</td>
-                    </tr>
-                    <tr class="grand-total">
-                        <td class="label">TOTAL:</td>
-                        <td class="amount">{{ number_format($sale->total_amount, 2) }} {{ $business->currency }}</td>
-                    </tr>
-                </table>
-            </div>
-    
-            <div class="footer">
-                @php
-                    $isCredit = $sale->payments->contains('payment_method', 'credit');
-                    $paymentType = $isCredit ? 'Crédito' : 'Al contado';
-                @endphp
-                <p>Método de Pago: {{ $paymentType }}</p>
-                <p><strong>¡Gracias por su compra!</strong></p>
-                
-                <div class="qr-code">
-                    <p>Representación Impresa de la Boleta de Venta Electrónica</p>
-                    @if ($sale->uuid)
-                        @php
-                            $publicReceiptUrl = route('receipt.public', ['uuid' => $sale->uuid]);
-                        @endphp
-                        <img src="https://api.qrserver.com/v1/create-qr-code/?size=100x100&data={{ urlencode($publicReceiptUrl) }}" alt="QR Code">
-                        <p>Puede escanear este código para ver o descargar su boleta.</p>
-                    @endif
                 </div>
-            </div>
+            @endif
+            <h1 class="business-name">{{ $business->name }}</h1>
+            <p class="business-info">
+                {{ $business->address }}<br>
+                {{ $business->phone }} | {{ $business->email }}
+            </p>
         </div>
-    </body>
-    </html>
+
+        <!-- Document Type Box -->
+        <div class="document-box">
+            <div class="ruc">R.U.C. {{ $business->tax_id ?? '----------' }}</div>
+            <div class="type">Boleta de Venta Electrónica</div>
+            <div class="number">{{ $sale->sale_number }}</div>
+        </div>
+
+        <!-- Info Section -->
+        <div class="section">
+            <table class="info-table">
+                <tr>
+                    <td class="label">FECHA:</td>
+                    <td>{{ \Carbon\Carbon::parse($sale->created_at)->format('d/m/Y h:i A') }}</td>
+                </tr>
+                <tr>
+                    <td class="label">CLIENTE:</td>
+                    <td>{{ $sale->customer_name }}</td>
+                </tr>
+                <tr>
+                    <td class="label">VENDEDOR:</td>
+                    <td>{{ $sale->creator->full_name }}</td>
+                </tr>
+            </table>
+        </div>
+
+        <!-- Items -->
+        <table class="items-table">
+            <thead>
+                <tr>
+                    <th class="qty">Cant</th>
+                    <th class="description">Descripción</th>
+                    <th class="price">Importe</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach ($sale->items as $item)
+                    <tr>
+                        <td class="qty">{{ number_format($item->quantity, 0) }}</td>
+                        <td class="description">
+                            <span class="item-name">{{ $item->item_name }}</span>
+                            <span class="item-meta">P. Unit: {{ number_format($item->unit_price, 2) }}</span>
+                        </td>
+                        <td class="price">{{ number_format($item->total_price, 2) }}</td>
+                    </tr>
+                @endforeach
+            </tbody>
+        </table>
+
+        <!-- Totals -->
+        <div class="totals-container">
+            <table class="totals-table">
+                <tr>
+                    <td class="label">OP. GRAVADA:</td>
+                    <td class="amount">{{ $business->currency }} {{ number_format($sale->total_amount / 1.18, 2) }}</td>
+                </tr>
+                <tr>
+                    <td class="label">I.G.V. (18%):</td>
+                    <td class="amount">{{ $business->currency }} {{ number_format($sale->total_amount - ($sale->total_amount / 1.18), 2) }}</td>
+                </tr>
+                <tr class="grand-total">
+                    <td class="label">TOTAL:</td>
+                    <td class="amount">{{ $business->currency }} {{ number_format($sale->total_amount, 2) }}</td>
+                </tr>
+            </table>
+        </div>
+
+        <!-- Footer -->
+        <div class="footer">
+            @php
+                $isCredit = $sale->payments->contains('payment_method', 'credit');
+                $paymentType = $isCredit ? 'Venta al Crédito' : 'Venta al Contado';
+            @endphp
+            <div class="payment-method">Condición: {{ $paymentType }}</div>
+            
+            <div class="qr-section">
+                @if ($sale->uuid)
+                    @php
+                        $publicReceiptUrl = route('receipt.public', ['uuid' => $sale->uuid]);
+                    @endphp
+                    <img src="https://api.qrserver.com/v1/create-qr-code/?size=100x100&data={{ urlencode($publicReceiptUrl) }}" alt="QR Code">
+                    <div class="qr-text">Representación impresa de la Boleta de Venta Electrónica.<br>Puede consultar este documento en nuestro portal.</div>
+                @endif
+            </div>
+
+            <div class="thanks">¡GRACIAS POR SU PREFERENCIA!</div>
+        </div>
+    </div>
+</body>
+
+</html>

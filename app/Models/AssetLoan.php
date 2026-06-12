@@ -62,9 +62,18 @@ class AssetLoan extends Model
     {
         $asset = $this->asset ?? Asset::find($values['asset_id'] ?? $this->asset_id);
         
-        return [
+        $metadata = [
             'asset_name' => $asset ? $asset->name : 'Bien desconocido',
             'borrower_name' => $values['borrower_name'] ?? $this->borrower_name,
         ];
+
+        // Si es una actualización de cantidades (devolución parcial/total)
+        if (isset($values['returned_quantity']) || isset($values['damaged_quantity']) || isset($values['lost_quantity'])) {
+            $metadata['action_type'] = 'return_process';
+            // Podemos capturar el usuario que realiza la acción si es necesario, 
+            // aunque el audit ya tiene user_id.
+        }
+
+        return $metadata;
     }
 }

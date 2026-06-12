@@ -88,7 +88,7 @@ class Audit extends Model
                 }
                 if ($class === 'AssetLoan') {
                     $asset = $meta['asset_name'] ?? 'bien';
-                    $borrower = $this->new_values['borrower_name'] ?? 'alguien';
+                    $borrower = $this->new_values['borrower_name'] ?? ($meta['borrower_name'] ?? 'alguien');
                     $qty = $this->new_values['quantity'] ?? '1';
                     return "Prestó {$qty} unidad(es) de '{$asset}' a '{$borrower}'.";
                 }
@@ -111,11 +111,31 @@ class Audit extends Model
                     return "Cambió el estado del pedido a: " . ($labels[$status] ?? $status);
                 }
                 
-                if ($class === 'AssetLoan' && isset($this->new_values['status'])) {
-                    $status = $this->new_values['status'];
-                    $labels = ['returned' => 'Devuelto', 'lost' => 'Perdido', 'damaged' => 'Dañado', 'loaned' => 'Prestado'];
+                if ($class === 'AssetLoan') {
                     $asset = $meta['asset_name'] ?? 'bien';
-                    return "Actualizó el estado del préstamo de '{$asset}' a: " . ($labels[$status] ?? $status);
+                    $borrower = $meta['borrower_name'] ?? 'alguien';
+                    
+                    // Caso 1: Cambio de estado explícito
+                    if (isset($this->new_values['status'])) {
+                        $status = $this->new_values['status'];
+                        $labels = ['returned' => 'Devuelto', 'lost' => 'Perdido', 'damaged' => 'Dañado', 'loaned' => 'Prestado'];
+                        return "Actualizó el estado del préstamo de '{$asset}' (prestado a {$borrower}) a: " . ($labels[$status] ?? $status);
+                    }
+
+                    // Caso 2: Proceso de devolución (incremento de cantidades)
+                    $returnChanges = [];
+                    foreach (['returned_quantity' => 'devuelto', 'damaged_quantity' => 'marcado como dañado', 'lost_quantity' => 'marcado como perdido'] as $key => $label) {
+                        if (isset($this->new_values[$key])) {
+                            $diff = $this->new_values[$key] - ($this->old_values[$key] ?? 0);
+                            if ($diff > 0) {
+                                $returnChanges[] = "{$diff} unidad(es) {$label}";
+                            }
+                        }
+                    }
+
+                    if (!empty($returnChanges)) {
+                        return "Registró devolución para '{$asset}' (de {$borrower}): " . implode(', ', $returnChanges) . ".";
+                    }
                 }
 
                 if ($class === 'Loan' && isset($this->new_values['paid_amount'])) {

@@ -36,6 +36,10 @@ class BusinessController extends Controller
             'email' => 'nullable|email|max:255|unique:businesses',
             'tax_id' => 'nullable|string|max:50',
             'currency' => 'required|in:PEN,USD',
+            'logo_path' => 'nullable|string|max:255',
+            'latitude' => 'nullable|numeric|between:-90,90',
+            'longitude' => 'nullable|numeric|between:-180,180',
+            'zoom' => 'nullable|integer|between:0,22',
         ]);
 
         $business = Business::create($validated + ['user_id' => Auth::id()]);
@@ -60,6 +64,10 @@ class BusinessController extends Controller
             'tax_id' => 'nullable|string|max:50',
             'currency' => 'sometimes|required|in:PEN,USD',
             'user_id' => 'sometimes|required|exists:users,id',
+            'logo_path' => 'nullable|string|max:255',
+            'latitude' => 'nullable|numeric|between:-90,90',
+            'longitude' => 'nullable|numeric|between:-180,180',
+            'zoom' => 'nullable|integer|between:0,22',
         ]);
 
         $business->update($validated);
@@ -79,7 +87,7 @@ class BusinessController extends Controller
         DB::statement("SET lc_time_names = 'es_ES'");
 
         $period = $request->input('period', 'week');
-        [$startDate, $endDate] = $this->getDateRange($period);
+        [$startDate, $endDate] = $this->getDateRange($period, $request);
 
         $now = Carbon::now();
         $today = Carbon::today();
@@ -145,14 +153,21 @@ class BusinessController extends Controller
         // 7. Top 5 Productos (Ajustado al periodo)
         $topProducts = DB::table('sale_items')
             ->join('sales', 'sale_items.sale_id', '=', 'sales.id')
-            ->select('sale_items.item_name as name', DB::raw('SUM(sale_items.quantity) as quantity'), DB::raw('SUM(sale_items.total_price) as revenue'))
+            ->select(
+                'sale_items.item_name as name',
+                DB::raw('SUM(sale_items.quantity) as quantity'),
+                DB::raw('SUM(sale_items.cost_price * sale_items.quantity) as revenue')
+            )
             ->where('sales.business_id', $business->id)
             ->where('sales.status', 'completed')
             ->whereBetween('sales.created_at', [$startDate, $endDate])
             ->whereNull('sales.deleted_at')
             ->whereNull('sale_items.deleted_at')
             ->where('sale_items.item_type', 'App\\Models\\Product')
-            ->groupBy('sale_items.item_name')->orderBy('revenue', 'desc')->limit(5)->get();
+            ->groupBy('sale_items.item_name')
+            ->orderBy('revenue', 'desc')
+            ->limit(5)
+            ->get();
 
         // 8. Top 5 Clientes (Ajustado al periodo)
         $topClients = DB::table('sales')
@@ -235,11 +250,24 @@ class BusinessController extends Controller
         ];
     }
 
-    private function getDateRange($period, $timezone = null)
+    private function getDateRange($period, $request = null)
     {
-        $now = Carbon::now($timezone);
+        $now = Carbon::now();
+
+        // Si el periodo parece una fecha (YYYY-MM-DD), tratarlo como un día específico
+        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $period)) {
+            $date = Carbon::parse($period);
+            return [$date->copy()->startOfDay(), $date->copy()->endOfDay()];
+        }
 
         switch ($period) {
+            case 'custom':
+                if ($request && ($request->has('from') || $request->has('to'))) {
+                    $from = $request->input('from') ? Carbon::parse($request->input('from'))->startOfDay() : $now->copy()->startOfMonth();
+                    $to = $request->input('to') ? Carbon::parse($request->input('to'))->endOfDay() : $now->copy()->endOfDay();
+                    return [$from, $to];
+                }
+                return [$now->copy()->startOfWeek(), $now->copy()->endOfWeek()];
             case 'day':
                 return [$now->copy()->startOfDay(), $now->copy()->endOfDay()];
             case 'month':
@@ -273,6 +301,19 @@ class BusinessController extends Controller
         $selectSQL = '';
         $groupBySQL = '';
         $orderBySQL = "MIN({$dateColumn})";
+
+        // Determinar agrupación para periodo personalizado o fecha específica
+        $standardPeriods = ['day', 'week', 'month', 'year'];
+        if (!in_array($period, $standardPeriods)) {
+            $daysDiff = $startDate->diffInDays($endDate);
+            if ($daysDiff <= 1) {
+                $period = 'day';
+            } elseif ($daysDiff <= 31) {
+                $period = 'month'; // Agrupación diaria (formato DD MMM)
+            } else {
+                $period = 'year'; // Agrupación mensual
+            }
+        }
 
         switch ($period) {
             case 'day':
