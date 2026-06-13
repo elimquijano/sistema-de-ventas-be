@@ -9,7 +9,22 @@ class Business extends Model
 {
     use HasFactory;
     protected $guarded = [];
-    protected $appends = ['products_count', 'services_count', 'sales_count'];
+    protected $appends = ['products_count', 'services_count', 'sales_count', 'logo_url'];
+
+    public function getLogoUrlAttribute()
+    {
+        return $this->logo_path ? \Illuminate\Support\Facades\Storage::disk('public')->url($this->logo_path) : null;
+    }
+
+    protected static function boot()
+    {
+        parent::boot();
+        static::deleting(function ($business) {
+            if ($business->logo_path) {
+                \Illuminate\Support\Facades\Storage::disk('public')->delete($business->logo_path);
+            }
+        });
+    }
 
     public function getProductsCountAttribute()
     {

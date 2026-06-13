@@ -64,11 +64,21 @@ class BusinessController extends Controller
             'tax_id' => 'nullable|string|max:50',
             'currency' => 'sometimes|required|in:PEN,USD',
             'user_id' => 'sometimes|required|exists:users,id',
-            'logo_path' => 'nullable|string|max:255',
+            'logo' => 'nullable|image|max:2048', // Validación para el archivo
             'latitude' => 'nullable|numeric|between:-90,90',
             'longitude' => 'nullable|numeric|between:-180,180',
             'zoom' => 'nullable|integer|between:0,22',
         ]);
+
+        if ($request->hasFile('logo')) {
+            // Eliminar logo anterior si existe
+            if ($business->logo_path) {
+                \Illuminate\Support\Facades\Storage::disk('public')->delete($business->logo_path);
+            }
+            // Guardar nuevo logo
+            $path = $request->file('logo')->store('logos', 'public');
+            $validated['logo_path'] = $path;
+        }
 
         $business->update($validated);
 
