@@ -153,10 +153,14 @@ class BusinessController extends Controller
         // 7. Top 5 Productos (Ajustado al periodo)
         $topProducts = DB::table('sale_items')
             ->join('sales', 'sale_items.sale_id', '=', 'sales.id')
+            ->join('products', function($join) {
+                $join->on('sale_items.item_id', '=', 'products.id')
+                     ->where('sale_items.item_type', '=', 'App\\Models\\Product');
+            })
             ->select(
                 'sale_items.item_name as name',
                 DB::raw('SUM(sale_items.quantity) as quantity'),
-                DB::raw('SUM(sale_items.cost_price * sale_items.quantity) as revenue')
+                DB::raw('SUM(products.cost * sale_items.quantity) as revenue')
             )
             ->where('sales.business_id', $business->id)
             ->where('sales.status', 'completed')
