@@ -99,33 +99,29 @@ class BusinessController extends Controller
         $period = $request->input('period', 'week');
         [$startDate, $endDate] = $this->getDateRange($period, $request);
 
-        $now = Carbon::now();
-        $today = Carbon::today();
-        $startToday = $today->copy()->startOfDay();
-        $endToday = $today->copy()->endOfDay();
+        // Periodo Anterior para comparativas
+        [$prevStartDate, $prevEndDate] = $this->getPreviousDateRange($period, $startDate, $endDate);
 
-        // 1. Alertas y Notificaciones (Regidas por el periodo cuando aplique)
+        // Métricas actuales y anteriores
+        $currentMetrics = $this->getMetricsForRange($business, $startDate, $endDate);
+        $prevMetrics = $this->getMetricsForRange($business, $prevStartDate, $prevEndDate);
+
+        // 1. Alertas y Notificaciones
         $stats = [
             'products_low_stock' => $business->products()->whereColumn('stock', '<=', 'min_stock')->count(),
             'pending_credits' => $business->credits()->where('status', 'pending')->count(),
-            'active_asset_loans' => $business->assetLoans()->where('status', 'loaned')->count(), // Bienes prestados actualmente
-            'period_asset_loans' => $business->assetLoans()->whereBetween('created_at', [$startDate, $endDate])->count(), // Bienes prestados en el periodo
+            'active_asset_loans' => $business->assetLoans()->where('status', 'loaned')->count(),
+            'period_asset_loans' => $business->assetLoans()->whereBetween('created_at', [$startDate, $endDate])->count(),
         ];
 
-        // 2. Histogramas (Ventas vs Gastos en el periodo)
+        // 2. Histogramas
         $salesData = $this->getChartData($business, 'sales', $period, $startDate, $endDate);
         $expensesData = $this->getChartData($business, 'expenses', $period, $startDate, $endDate);
 
-        // 3. Ganancia Neta y Promedios (Basado en cajas cuyo inicio está en el periodo)
-        $profitStats = $business->cashRegisters()
-            ->whereBetween('opened_at', [$startDate, $endDate])
-            ->select(
-                DB::raw('SUM(profit) as total_profit'),
-                DB::raw('AVG(profit) as avg_profit'),
-                DB::raw('COUNT(*) as total_registers')
-            )->first();
+        // 3. Cálculo de Promedio de Ganancias (Profit)
+        $avgProfit = $this->calculateAverageProfit($currentMetrics['profit'], $period, $startDate, $endDate);
 
-        // 4. Ganancia por Usuario (Profit por caja iniciada por usuario en el periodo)
+        // 4. Ganancia por Usuario
         $profitByUser = DB::table('cash_registers')
             ->join('users', 'cash_registers.opened_by', '=', 'users.id')
             ->select(
@@ -138,7 +134,7 @@ class BusinessController extends Controller
             ->orderBy('value', 'desc')
             ->get();
 
-        // 5. Gasto por Categoría (En qué se gasta más en el periodo)
+        // 5. Gasto por Categoría
         $expensesByCategory = DB::table('expenses')
             ->join('categories', 'expenses.category_id', '=', 'categories.id')
             ->select('categories.name as name', DB::raw('SUM(expenses.amount) as value'))
@@ -149,7 +145,7 @@ class BusinessController extends Controller
             ->orderBy('value', 'desc')
             ->get();
 
-        // 6. Formas de Pago (Distribución según el periodo)
+        // 6. Formas de Pago
         $paymentMethods = DB::table('sale_payments')
             ->join('sales', 'sale_payments.sale_id', '=', 'sales.id')
             ->select('sale_payments.payment_method as name', DB::raw('SUM(sale_payments.amount) as value'))
@@ -160,30 +156,30 @@ class BusinessController extends Controller
             ->groupBy('sale_payments.payment_method')
             ->get();
 
-        // 7. Top 5 Productos (Ajustado al periodo)
+        // 7. Top 5 Productos (Corregido: Revenue = Ventas, Cost = Gasto mercadería)
         $topProducts = DB::table('sale_items')
             ->join('sales', 'sale_items.sale_id', '=', 'sales.id')
-            ->join('products', function($join) {
+            ->leftJoin('products', function($join) {
                 $join->on('sale_items.item_id', '=', 'products.id')
                      ->where('sale_items.item_type', '=', 'App\\Models\\Product');
             })
             ->select(
                 'sale_items.item_name as name',
                 DB::raw('SUM(sale_items.quantity) as quantity'),
-                DB::raw('SUM(products.cost * sale_items.quantity) as revenue')
+                DB::raw('SUM(sale_items.total_price) as revenue'),
+                DB::raw('SUM(COALESCE(products.cost, 0) * sale_items.quantity) as cost')
             )
             ->where('sales.business_id', $business->id)
             ->where('sales.status', 'completed')
             ->whereBetween('sales.created_at', [$startDate, $endDate])
             ->whereNull('sales.deleted_at')
             ->whereNull('sale_items.deleted_at')
-            ->where('sale_items.item_type', 'App\\Models\\Product')
             ->groupBy('sale_items.item_name')
             ->orderBy('revenue', 'desc')
             ->limit(5)
             ->get();
 
-        // 8. Top 5 Clientes (Ajustado al periodo)
+        // 8. Top 5 Clientes
         $topClients = DB::table('sales')
             ->select('customer_name as name', DB::raw('SUM(total_amount) as value'), DB::raw('COUNT(*) as orders'))
             ->where('business_id', $business->id)
@@ -195,13 +191,11 @@ class BusinessController extends Controller
             ->limit(5)
             ->get();
 
-        // 9. Comparativa con Periodo Anterior
-        $comparison = $this->getPeriodComparison($business, $period, $startDate, $endDate);
-
-        // 10. Cajas de Hoy (Se mantiene como "Hoy" por ser operativo inmediato)
+        // 9. Cajas de Hoy
+        $today = Carbon::today();
         $cashRegistersToday = $business->cashRegisters()
             ->with('openedBy:id,first_name,last_name')
-            ->whereBetween('opened_at', [$startToday, $endToday])
+            ->whereBetween('opened_at', [$today->copy()->startOfDay(), $today->copy()->endOfDay()])
             ->orderBy('opened_at', 'desc')
             ->get();
 
@@ -213,11 +207,11 @@ class BusinessController extends Controller
             ],
             'stats' => $stats,
             'financials' => [
-                'net_profit' => (float) ($profitStats->total_profit ?? 0),
-                'avg_profit_per_register' => (float) ($profitStats->avg_profit ?? 0),
-                'total_sales' => $salesData->sum('value'),
-                'total_expenses' => $expensesData->sum('value'),
-                'growth_comparison' => $comparison,
+                'profit' => $this->formatMetric($currentMetrics['profit'], $prevMetrics['profit']),
+                'sales' => $this->formatMetric($currentMetrics['sales'], $prevMetrics['sales']),
+                'expenses' => $this->formatMetric($currentMetrics['expenses'], $prevMetrics['expenses']),
+                'cost_of_goods_sold' => $this->formatMetric($currentMetrics['cogs'], $prevMetrics['cogs']),
+                'avg_profit' => (float) $avgProfit,
             ],
             'charts' => [
                 'histogram' => [
@@ -234,34 +228,112 @@ class BusinessController extends Controller
         ]);
     }
 
-    private function getPeriodComparison($business, $period, $startDate, $endDate)
+    private function getPreviousDateRange($period, $startDate, $endDate)
     {
         $diff = $startDate->diffInDays($endDate) + 1;
-        $prevStartDate = $startDate->copy()->subDays($diff);
-        $prevEndDate = $endDate->copy()->subDays($diff);
+        
+        switch ($period) {
+            case 'day':
+                $prevStart = $startDate->copy()->subDay();
+                $prevEnd = $endDate->copy()->subDay();
+                break;
+            case 'week':
+                $prevStart = $startDate->copy()->subWeek();
+                $prevEnd = $endDate->copy()->subWeek();
+                break;
+            case 'month':
+                $prevStart = $startDate->copy()->subMonth();
+                $prevEnd = $endDate->copy()->subMonth();
+                break;
+            case 'year':
+                $prevStart = $startDate->copy()->subYear();
+                $prevEnd = $endDate->copy()->subYear();
+                break;
+            default:
+                $prevStart = $startDate->copy()->subDays($diff);
+                $prevEnd = $endDate->copy()->subDays($diff);
+                break;
+        }
 
-        $currentSales = DB::table('sales')
+        return [$prevStart, $prevEnd];
+    }
+
+    private function getMetricsForRange($business, $startDate, $endDate)
+    {
+        $start = $startDate->toDateTimeString();
+        $end = $endDate->toDateTimeString();
+
+        $sales = DB::table('sales')
             ->where('business_id', $business->id)
             ->where('status', 'completed')
-            ->whereBetween('created_at', [$startDate, $endDate])
+            ->whereBetween('created_at', [$start, $end])
             ->whereNull('deleted_at')
             ->sum('total_amount');
 
-        $prevSales = DB::table('sales')
+        $expenses = DB::table('expenses')
             ->where('business_id', $business->id)
-            ->where('status', 'completed')
-            ->whereBetween('created_at', [$prevStartDate, $prevEndDate])
+            ->whereBetween('expense_date', [$start, $end])
             ->whereNull('deleted_at')
-            ->sum('total_amount');
+            ->sum('amount');
 
-        $growth = $prevSales > 0 ? (($currentSales - $prevSales) / $prevSales) * 100 : ($currentSales > 0 ? 100 : 0);
+        $profit = DB::table('cash_registers')
+            ->where('business_id', $business->id)
+            ->whereBetween('opened_at', [$start, $end])
+            ->sum('profit');
+
+        $cogs = DB::table('sale_items')
+            ->join('sales', 'sale_items.sale_id', '=', 'sales.id')
+            ->leftJoin('products', function($join) {
+                $join->on('sale_items.item_id', '=', 'products.id')
+                     ->where('sale_items.item_type', '=', 'App\\Models\\Product');
+            })
+            ->where('sales.business_id', $business->id)
+            ->where('sales.status', 'completed')
+            ->whereBetween('sales.created_at', [$start, $end])
+            ->whereNull('sales.deleted_at')
+            ->whereNull('sale_items.deleted_at')
+            ->sum(DB::raw('COALESCE(products.cost, 0) * sale_items.quantity'));
 
         return [
-            'current_sales' => (float) $currentSales,
-            'previous_sales' => (float) $prevSales,
-            'growth_percentage' => round($growth, 2),
+            'sales' => (float)$sales,
+            'expenses' => (float)$expenses,
+            'profit' => (float)$profit,
+            'cogs' => (float)$cogs,
+        ];
+    }
+
+    private function formatMetric($current, $previous)
+    {
+        $growth = $previous > 0 ? (($current - $previous) / $previous) * 100 : ($current > 0 ? 100 : 0);
+
+        return [
+            'value' => (float) $current,
+            'previous' => (float) $previous,
+            'percentage' => round($growth, 2),
             'trend' => $growth >= 0 ? 'up' : 'down',
         ];
+    }
+
+    private function calculateAverageProfit($totalProfit, $period, $startDate, $endDate)
+    {
+        $diffDays = $startDate->diffInDays($endDate) + 1;
+
+        switch ($period) {
+            case 'day':
+                return $totalProfit / 24;
+            case 'week':
+            case 'month':
+                return $totalProfit / $diffDays;
+            case 'year':
+                return $totalProfit / 12;
+            case 'custom':
+                if ($startDate->isSameDay($endDate)) {
+                    return $totalProfit / 24;
+                }
+                return $totalProfit / $diffDays;
+            default:
+                return $totalProfit / $diffDays;
+        }
     }
 
     private function getDateRange($period, $request = null)
