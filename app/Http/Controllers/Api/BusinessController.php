@@ -80,6 +80,8 @@ class BusinessController extends Controller
             $validated['logo_path'] = $path;
         }
 
+        unset($validated['logo']);
+
         $business->update($validated);
 
         return response()->json($business);
