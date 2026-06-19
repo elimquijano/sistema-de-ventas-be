@@ -22,7 +22,7 @@ class AssetLoanController extends Controller
         if ($request->filled('search')) {
             $searchTerm = $request->search;
             $query->where(function ($q) use ($searchTerm) {
-                $q->where('beneficiary_name', 'like', "%{$searchTerm}%")
+                $q->where('borrower_name', 'like', "%{$searchTerm}%")
                   ->orWhereHas('asset', function ($q) use ($searchTerm) {
                       $q->where('name', 'like', "%{$searchTerm}%");
                   });
