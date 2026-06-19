@@ -148,15 +148,24 @@ class BusinessController extends Controller
             ->get();
 
         // 6. Formas de Pago
-        $paymentMethods = DB::table('sale_payments')
-            ->join('sales', 'sale_payments.sale_id', '=', 'sales.id')
-            ->select('sale_payments.payment_method as name', DB::raw('SUM(sale_payments.amount) as value'))
-            ->where('sales.business_id', $business->id)
-            ->whereIn('sales.status', ['completed', 'debt'])
-            ->whereBetween('sales.scheduled_at', [$startDate, $endDate])
-            ->whereNull('sales.deleted_at')
-            ->whereNull('sale_payments.deleted_at')
-            ->groupBy('sale_payments.payment_method')
+        // Lógica: Si una venta tiene un pago tipo 'credit' que iguala el total de la venta,
+        // ignoramos cualquier otro pago (cobranza) asociado a esa misma venta.
+        // Si el pago 'credit' es menor al total (venta mixta), sumamos todo normalmente.
+        $paymentMethods = DB::table('sale_payments as sp')
+            ->join('sales as s', 'sp.sale_id', '=', 's.id')
+            ->select('sp.payment_method as name', DB::raw('SUM(sp.amount) as value'))
+            ->where('s.business_id', $business->id)
+            ->whereIn('s.status', ['completed', 'debt'])
+            ->whereBetween('s.scheduled_at', [$startDate, $endDate])
+            ->whereNull('s.deleted_at')
+            ->whereNull('sp.deleted_at')
+            ->whereRaw('NOT (sp.payment_method != "credit" AND EXISTS (
+                SELECT 1 FROM sale_payments as sp2 
+                WHERE sp2.sale_id = sp.sale_id 
+                AND sp2.payment_method = "credit"
+                AND sp2.amount = s.total_amount
+            ))')
+            ->groupBy('sp.payment_method')
             ->get();
 
         // 7. Top 5 Productos (Corregido: Revenue = Ventas, Cost = Gasto mercadería)
