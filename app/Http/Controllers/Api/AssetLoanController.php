@@ -18,12 +18,42 @@ class AssetLoanController extends Controller
             ->with(['asset', 'creator'])
             ->where('business_id', Auth::user()->business_id);
 
+        // Filtro por término (beneficiario, nombre de activo)
+        if ($request->filled('search')) {
+            $searchTerm = $request->search;
+            $query->where(function ($q) use ($searchTerm) {
+                $q->where('beneficiary_name', 'like', "%{$searchTerm}%")
+                  ->orWhereHas('asset', function ($q) use ($searchTerm) {
+                      $q->where('name', 'like', "%{$searchTerm}%");
+                  });
+            });
+        }
+
         if ($request->filled('status')) {
             $query->where('status', $request->status);
         }
 
         if ($request->filled('asset_id')) {
             $query->where('asset_id', $request->asset_id);
+        }
+
+        // Filtros de fecha
+        if ($request->filled('loan_date_from')) {
+            $query->whereDate('loan_date', '>=', $request->loan_date_from);
+        }
+        if ($request->filled('loan_date_to')) {
+            $query->whereDate('loan_date', '<=', $request->loan_date_to);
+        }
+        if ($request->filled('return_date_from')) {
+            $query->whereDate('return_date', '>=', $request->return_date_from);
+        }
+        if ($request->filled('return_date_to')) {
+            $query->whereDate('return_date', '<=', $request->return_date_to);
+        }
+
+        // Filtro por usuario creador (registrado por)
+        if ($request->filled('created_by')) {
+            $query->where('created_by', $request->created_by);
         }
 
         $perPage = $this->getPaginationSize($request, $query);
