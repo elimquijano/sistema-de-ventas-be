@@ -173,7 +173,7 @@ class BusinessController extends Controller
             )
             ->where('sales.business_id', $business->id)
             ->where('sales.status', 'completed')
-            ->whereBetween('sales.created_at', [$startDate, $endDate])
+            ->whereBetween('sales.scheduled_at', [$startDate, $endDate])
             ->whereNull('sales.deleted_at')
             ->whereNull('sale_items.deleted_at')
             ->groupBy('sale_items.item_name')
@@ -186,7 +186,7 @@ class BusinessController extends Controller
             ->select('customer_name as name', DB::raw('SUM(total_amount) as value'), DB::raw('COUNT(*) as orders'))
             ->where('business_id', $business->id)
             ->where('status', 'completed')
-            ->whereBetween('created_at', [$startDate, $endDate])
+            ->whereBetween('scheduled_at', [$startDate, $endDate])
             ->whereNull('deleted_at')
             ->groupBy('customer_name')
             ->orderBy('value', 'desc')
@@ -268,7 +268,7 @@ class BusinessController extends Controller
         $sales = DB::table('sales')
             ->where('business_id', $business->id)
             ->where('status', 'completed')
-            ->whereBetween('created_at', [$start, $end])
+            ->whereBetween('scheduled_at', [$start, $end])
             ->whereNull('deleted_at')
             ->sum('total_amount');
 
@@ -291,7 +291,7 @@ class BusinessController extends Controller
             })
             ->where('sales.business_id', $business->id)
             ->where('sales.status', 'completed')
-            ->whereBetween('sales.created_at', [$start, $end])
+            ->whereBetween('sales.scheduled_at', [$start, $end])
             ->whereNull('sales.deleted_at')
             ->whereNull('sale_items.deleted_at')
             ->sum(DB::raw('COALESCE(products.cost, 0) * sale_items.quantity'));
@@ -371,7 +371,7 @@ class BusinessController extends Controller
     private function getChartData($business, $type, $period, $startDate, $endDate)
     {
         $table = $type === 'sales' ? 'sales' : 'expenses';
-        $dateColumn = $type === 'sales' ? 'created_at' : 'expense_date';
+        $dateColumn = $type === 'sales' ? 'scheduled_at' : 'expense_date';
         $amountColumn = $type === 'sales' ? 'total_amount' : 'amount';
 
         $start = $startDate->toDateTimeString();
