@@ -41,12 +41,7 @@ class AuditPerformedNotification extends Notification
         $actorName = $actor ? $actor->full_name : 'Sistema';
         $description = $this->audit->description;
         
-        // Si el notificado es el mismo que hizo la acción
-        if ($actor && $notifiable->id === $actor->id) {
-            $message = "Has realizado una acción: " . $description;
-        } else {
-            $message = $actorName . " realizó una acción: " . $description;
-        }
+        $message = $actorName . " " . $description;
 
         return [
             'audit_id' => $this->audit->id,

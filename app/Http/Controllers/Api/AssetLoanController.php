@@ -14,6 +14,11 @@ class AssetLoanController extends Controller
 {
     public function index(Request $request)
     {
+        $request->validate([
+            'loan_date' => 'nullable|date',
+            'return_date' => 'nullable|date',
+        ]);
+
         $query = AssetLoan::query()
             ->with(['asset', 'creator'])
             ->where('business_id', Auth::user()->business_id);
@@ -37,18 +42,15 @@ class AssetLoanController extends Controller
             $query->where('asset_id', $request->asset_id);
         }
 
-        // Filtros de fecha
-        if ($request->filled('loan_date_from')) {
-            $query->whereDate('loan_date', '>=', $request->loan_date_from);
+        // Filtros de fecha (exacta)
+        if ($request->filled('loan_date')) {
+            $loanDate = substr($request->loan_date, 0, 10);
+            $query->whereDate('loan_date', $loanDate);
         }
-        if ($request->filled('loan_date_to')) {
-            $query->whereDate('loan_date', '<=', $request->loan_date_to);
-        }
-        if ($request->filled('return_date_from')) {
-            $query->whereDate('return_date', '>=', $request->return_date_from);
-        }
-        if ($request->filled('return_date_to')) {
-            $query->whereDate('return_date', '<=', $request->return_date_to);
+
+        if ($request->filled('return_date')) {
+            $returnDate = substr($request->return_date, 0, 10);
+            $query->whereDate('return_date', $returnDate);
         }
 
         // Filtro por usuario creador (registrado por)

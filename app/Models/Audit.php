@@ -84,7 +84,7 @@ class Audit extends Model
                 if ($class === 'Credit') {
                     $amount = $this->new_values['total_amount'] ?? '0.00';
                     $client = $this->new_values['customer_name'] ?? 'Cliente';
-                    return "Generó un crédito de S/ {$amount} para el cliente {$client}.";
+                    return "Generó un crédito de S/ {$amount} para {$client}.";
                 }
                 if ($class === 'AssetLoan') {
                     $asset = $meta['asset_name'] ?? 'bien';

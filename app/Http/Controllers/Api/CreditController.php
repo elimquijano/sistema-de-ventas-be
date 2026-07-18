@@ -16,6 +16,11 @@ class CreditController extends Controller
 {
     public function index(Request $request)
     {
+        $request->validate([
+            'created_at' => 'nullable|date',
+            'updated_at' => 'nullable|date',
+        ]);
+
         $user = Auth::user();
         $query = Credit::query()->with(['sale', 'creator']);
 
@@ -39,9 +44,16 @@ class CreditController extends Controller
             $query->where('status', $request->status);
         }
 
-        // Filter by date
-        if ($request->filled('date')) {
-            $query->whereDate('created_at', $request->date);
+        // Filter by creation date (created_at)
+        if ($request->filled('created_at')) {
+            $createdAt = substr($request->created_at, 0, 10);
+            $query->whereDate('created_at', $createdAt);
+        }
+
+        // Filter by last update date (updated_at)
+        if ($request->filled('updated_at')) {
+            $updatedAt = substr($request->updated_at, 0, 10);
+            $query->whereDate('updated_at', $updatedAt);
         }
 
         $perPage = $this->getPaginationSize($request, $query);
