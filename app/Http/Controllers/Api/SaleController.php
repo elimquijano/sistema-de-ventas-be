@@ -46,9 +46,14 @@ class SaleController extends Controller
             'address' => 'nullable|string|max:500',
             'latitude' => 'nullable|numeric',
             'longitude' => 'nullable|numeric',
-            'product_id' => 'required|exists:products,id',
-            'quantity' => 'required|integer|min:1',
-            'total_amount' => 'required|numeric|min:0',
+            // Se mantiene product_id/quantity por compatibilidad con clientes antiguos.
+            'product_id' => 'required_without:items|nullable|exists:products,id',
+            'quantity' => 'required_without:items|nullable|integer|min:1',
+            'items' => 'required_without:product_id|nullable|array|min:1',
+            'items.*.id' => 'required|integer',
+            'items.*.type' => 'required|string|in:product,service',
+            'items.*.quantity' => 'required|integer|min:1',
+            'total_amount' => 'nullable|numeric|min:0',
             'rider_id' => 'required|exists:users,id',
             'notes' => 'nullable|string',
             'scheduled_at' => 'nullable|date',
@@ -57,7 +62,7 @@ class SaleController extends Controller
         $sale = DB::transaction(function () use ($validated, $business) {
             // 1. Buscar o Crear Cliente (Basado en teléfono Y dirección para permitir múltiples ubicaciones)
             $client = Client::where('phone', $validated['phone'])
-                ->where('address', $validated['address'])
+                ->where('address', $validated['address'] ?? null)
                 ->where('business_id', $business->id)
                 ->first();
 
@@ -65,7 +70,7 @@ class SaleController extends Controller
                 $client = Client::create([
                     'phone' => $validated['phone'],
                     'name' => $validated['customer_name'] ?? 'Cliente (' . $validated['phone'] . ')',
-                    'address' => $validated['address'],
+                    'address' => $validated['address'] ?? null,
                     'address_detail' => $validated['notes'] ?? null,
                     'latitude' => $validated['latitude'] ?? 0,
                     'longitude' => $validated['longitude'] ?? 0,
@@ -74,13 +79,37 @@ class SaleController extends Controller
                 ]);
             }
 
-            // 2. Preparar el Producto
-            $product = Product::findOrFail($validated['product_id']);
-            if ($product->stock < $validated['quantity']) {
-                throw ValidationException::withMessages([
-                    'product_id' => ['Stock insuficiente para ' . $product->name . ' (Disponible: ' . $product->stock . ')']
-                ]);
-            }
+            // 2. Preparar uno o varios productos/servicios.
+            $requestedItems = $validated['items'] ?? [[
+                'id' => $validated['product_id'],
+                'type' => 'product',
+                'quantity' => $validated['quantity'],
+            ]];
+
+            $preparedItems = collect($requestedItems)->map(function ($itemData) use ($business) {
+                $modelClass = $itemData['type'] === 'product' ? Product::class : Service::class;
+                $item = $modelClass::where('business_id', $business->id)->findOrFail($itemData['id']);
+
+                return compact('itemData', 'modelClass', 'item');
+            });
+
+            // Agrupar cantidades evita aprobar dos líneas del mismo producto por encima del stock.
+            $preparedItems->where('modelClass', Product::class)
+                ->groupBy(fn ($prepared) => $prepared['item']->id)
+                ->each(function ($lines) {
+                    $product = $lines->first()['item'];
+                    $quantity = $lines->sum(fn ($line) => $line['itemData']['quantity']);
+                    if ($product->stock < $quantity) {
+                        throw ValidationException::withMessages([
+                            'items' => ['Stock insuficiente para ' . $product->name . ' (Disponible: ' . $product->stock . ')']
+                        ]);
+                    }
+                });
+
+            $catalogTotal = $preparedItems->sum(fn ($prepared) =>
+                $prepared['item']->price * $prepared['itemData']['quantity']
+            );
+            $totalAmount = $validated['total_amount'] ?? $catalogTotal;
 
             // 3. Crear la Venta (Borrador/Pending)
             $scheduledAt = $validated['scheduled_at'] ?? now();
@@ -90,28 +119,40 @@ class SaleController extends Controller
                 'rider_id' => $validated['rider_id'],
                 'delivery_address' => $validated['address'] ?? $client->address,
                 'delivery_phone' => $client->phone,
-                'delivery_notes' => $validated['notes'],
+                'delivery_notes' => $validated['notes'] ?? null,
                 'is_delivery' => true,
                 'scheduled_at' => $scheduledAt,
                 'created_at' => $scheduledAt, // Usar la fecha programada como fecha de creación para sincronización
                 'created_by' => Auth::id(),
-                'total_amount' => $validated['total_amount'], // Monto manual
+                'total_amount' => $totalAmount,
                 'status' => 'pending',
             ]);
 
-            // 4. Crear el Item (con precio ajustado para que cuadre el total)
-            $unitPrice = $validated['total_amount'] / $validated['quantity'];
-            $sale->items()->create([
-                'item_id' => $product->id,
-                'item_type' => Product::class,
-                'item_name' => $product->name,
-                'unit_price' => $unitPrice,
-                'quantity' => $validated['quantity'],
-                'total_price' => $validated['total_amount'],
-            ]);
+            // 4. Crear los ítems. Si llega un total manual, se distribuye proporcionalmente.
+            $remainingTotal = (float) $totalAmount;
+            $lastIndex = $preparedItems->count() - 1;
+            foreach ($preparedItems->values() as $index => $prepared) {
+                $item = $prepared['item'];
+                $quantity = $prepared['itemData']['quantity'];
+                $lineCatalogTotal = (float) $item->price * $quantity;
+                $lineTotal = $index === $lastIndex
+                    ? $remainingTotal
+                    : round($catalogTotal > 0 ? ($lineCatalogTotal / $catalogTotal) * $totalAmount : 0, 2);
+                $remainingTotal -= $lineTotal;
 
-            // 5. Reservar Stock
-            $product->decrement('stock', $validated['quantity']);
+                $sale->items()->create([
+                    'item_id' => $item->id,
+                    'item_type' => $prepared['modelClass'],
+                    'item_name' => $item->name,
+                    'unit_price' => $quantity > 0 ? $lineTotal / $quantity : 0,
+                    'quantity' => $quantity,
+                    'total_price' => $lineTotal,
+                ]);
+
+                if ($prepared['modelClass'] === Product::class) {
+                    $item->decrement('stock', $quantity);
+                }
+            }
 
             // 6. Preparar Mensaje para el Repartidor (WhatsApp)
             // Solo enviar si el pedido no es de hace más de 15 minutos (para evitar duplicados en sincronización)
@@ -363,11 +404,12 @@ class SaleController extends Controller
             'payments.*.payment_method' => 'required|string|in:cash,credit,yape,plin,card,transfer,discount',
             'payments.*.amount' => 'required|numeric|min:0',
             'payments.*.reference' => 'nullable|string|max:255',
+            'payments.*.payment_image' => 'nullable|image',
         ]);
 
         $isDelivery = $request->boolean('is_delivery');
 
-        $sale = DB::transaction(function () use ($validated, $business, $isDelivery) {
+        $sale = DB::transaction(function () use ($validated, $business, $isDelivery, $request) {
             // Determinar a qué caja va la venta
             $targetUserId = ($isDelivery && !empty($validated['rider_id']))
                 ? $validated['rider_id']
@@ -459,8 +501,13 @@ class SaleController extends Controller
                 $cashRegister->increment('expected_amount', $totalAmount);
                 $cashRegister->increment('profit', $totalProfit);
 
-                foreach ($payments as $payment) {
-                    $sale->payments()->create($payment);
+                foreach ($payments as $index => $payment) {
+                    $sale->payments()->create([
+                        'payment_method' => $payment['payment_method'],
+                        'amount' => $payment['amount'],
+                        'reference' => $payment['reference'] ?? null,
+                        'payment_image' => $this->storePaymentImage($request, $index),
+                    ]);
 
                     if ($payment['payment_method'] === 'cash') {
                         $cashRegister->increment('cash_sales_amount', $payment['amount']);
@@ -492,8 +539,13 @@ class SaleController extends Controller
                 // Si es crédito pero POS directo, registramos el crédito pero aún no el efectivo
                 $cashRegister->increment('expected_amount', $totalAmount);
                 $cashRegister->increment('profit', $totalProfit);
-                foreach ($payments as $payment) {
-                    $sale->payments()->create($payment);
+                foreach ($payments as $index => $payment) {
+                    $sale->payments()->create([
+                        'payment_method' => $payment['payment_method'],
+                        'amount' => $payment['amount'],
+                        'reference' => $payment['reference'] ?? null,
+                        'payment_image' => $this->storePaymentImage($request, $index),
+                    ]);
                     if ($payment['payment_method'] === 'cash') {
                         $cashRegister->increment('cash_sales_amount', $payment['amount']);
                     }
@@ -687,6 +739,27 @@ class SaleController extends Controller
     public function show(Sale $sale)
     {
         return $sale->load('items.item', 'creator', 'cashRegister');
+    }
+
+    private function storePaymentImage(Request $request, int $index): ?string
+    {
+        if (!$request->hasFile("payments.{$index}.payment_image")) {
+            return null;
+        }
+
+        $file = $request->file("payments.{$index}.payment_image");
+        $imagePath = 'payments/' . uniqid() . '.jpg';
+
+        try {
+            $manager = new \Intervention\Image\ImageManager(new \Intervention\Image\Drivers\Gd\Driver());
+            $image = $manager->read($file);
+            $image->scaleDown(width: 1200);
+            Storage::disk('public')->put($imagePath, (string) $image->toJpeg(75));
+
+            return $imagePath;
+        } catch (\Exception $e) {
+            return $file->store('payments', 'public');
+        }
     }
 
     public function destroy(Sale $sale)

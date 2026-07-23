@@ -22,7 +22,7 @@ class CreditController extends Controller
         ]);
 
         $user = Auth::user();
-        $query = Credit::query()->with(['sale', 'creator']);
+        $query = Credit::query()->with(['sale.payments', 'creator']);
 
         if ($user->business_id) {
             $query->where('business_id', $user->business_id);
@@ -65,7 +65,7 @@ class CreditController extends Controller
     public function show(Credit $credit)
     {
         // Gate::authorize('view-credit', $credit);
-        return $credit->load(['sale', 'creator']);
+        return $credit->load(['sale.payments', 'creator']);
     }
 
     public function update(Request $request, Credit $credit)
@@ -97,7 +97,7 @@ class CreditController extends Controller
             $credit->sale()->update(['status' => 'debt']);
         }
 
-        return response()->json($credit);
+        return response()->json($credit->load(['sale.payments', 'creator']));
     }
 
     public function addPayment(Request $request, Credit $credit)
@@ -140,32 +140,12 @@ class CreditController extends Controller
             }
 
             foreach ($validated['payments'] as $index => $paymentData) {
-                $imagePath = null;
-                
-                // Extraer el archivo directamente de los datos validados
-                $file = $paymentData['payment_image'] ?? null;
-
-                if ($file && $file instanceof \Illuminate\Http\UploadedFile) {
-                    $filename = uniqid() . '.jpg';
-                    $imagePath = "payments/{$filename}";
-
-                    try {
-                        $manager = new \Intervention\Image\ImageManager(new \Intervention\Image\Drivers\Gd\Driver());
-                        $image = $manager->read($file);
-                        $image->scale(width: 1200);
-                        $encoded = $image->toJpeg(75);
-                        Storage::disk('public')->put($imagePath, (string) $encoded);
-                    } catch (\Exception $e) {
-                        $imagePath = $file->store('payments', 'public');
-                    }
-                }
-
-                // Registrar el pago en la venta vinculada
+                // El método, referencia e imagen pertenecen al pago de la venta.
                 $credit->sale->payments()->create([
                     'amount' => $paymentData['amount'],
                     'payment_method' => $paymentData['payment_method'],
                     'reference' => 'Cobranza: ' . ($paymentData['reference'] ?? ''),
-                    'payment_image' => $imagePath,
+                    'payment_image' => $this->storePaymentImage($request, $index),
                 ]);
 
                 if ($paymentData['payment_method'] === 'cash' && $cashRegister) {
@@ -199,7 +179,7 @@ class CreditController extends Controller
     public function getPending(Request $request)
     {
         $user = Auth::user();
-        $query = Credit::query()->where('status', 'pending')->with(['sale', 'creator']);
+        $query = Credit::query()->where('status', 'pending')->with(['sale.payments', 'creator']);
 
         if ($user->business_id) {
             $query->where('business_id', $user->business_id);
@@ -214,5 +194,26 @@ class CreditController extends Controller
     public function timeline(Credit $credit)
     {
         return response()->json($credit->getDeepTimeline());
+    }
+
+    private function storePaymentImage(Request $request, int $index): ?string
+    {
+        if (!$request->hasFile("payments.{$index}.payment_image")) {
+            return null;
+        }
+
+        $file = $request->file("payments.{$index}.payment_image");
+        $imagePath = 'payments/' . uniqid() . '.jpg';
+
+        try {
+            $manager = new \Intervention\Image\ImageManager(new \Intervention\Image\Drivers\Gd\Driver());
+            $image = $manager->read($file);
+            $image->scaleDown(width: 1200);
+            Storage::disk('public')->put($imagePath, (string) $image->toJpeg(75));
+
+            return $imagePath;
+        } catch (\Exception $e) {
+            return $file->store('payments', 'public');
+        }
     }
 }
