@@ -108,7 +108,7 @@ class CreditController extends Controller
             'payments.*.payment_method' => 'required|string|in:cash,yape,plin,card,transfer,discount,vale',
             'payments.*.amount' => 'required|numeric|min:0',
             'payments.*.reference' => 'nullable|string|max:255',
-            'payments.*.payment_image' => 'nullable|image',
+            'payments.*.payment_image' => $this->paymentImageRules(),
         ]);
 
         $business = Auth::user()->business;
@@ -198,22 +198,67 @@ class CreditController extends Controller
 
     private function storePaymentImage(Request $request, int $index): ?string
     {
-        if (!$request->hasFile("payments.{$index}.payment_image")) {
+        if ($request->hasFile("payments.{$index}.payment_image")) {
+            $file = $request->file("payments.{$index}.payment_image");
+            $imagePath = 'payments/' . uniqid() . '.jpg';
+
+            try {
+                $manager = new \Intervention\Image\ImageManager(new \Intervention\Image\Drivers\Gd\Driver());
+                $image = $manager->read($file);
+                $image->scaleDown(width: 1200);
+                Storage::disk('public')->put($imagePath, (string) $image->toJpeg(75));
+
+                return $imagePath;
+            } catch (\Exception $e) {
+                return $file->store('payments', 'public');
+            }
+        }
+
+        return $this->storeBase64PaymentImage(
+            $request->input("payments.{$index}.payment_image")
+        );
+    }
+
+    private function paymentImageRules(): array
+    {
+        return ['nullable', function (string $attribute, mixed $value, \Closure $fail) {
+            $maxBytes = 10 * 1024 * 1024;
+            if ($value instanceof \Illuminate\Http\UploadedFile) {
+                if (!$value->isValid() || @getimagesize($value->getRealPath()) === false) {
+                    $fail("El campo {$attribute} debe ser una imagen válida.");
+                } elseif ($value->getSize() > $maxBytes) {
+                    $fail("El campo {$attribute} no debe superar los 10 MB.");
+                }
+                return;
+            }
+
+            if (is_string($value) && preg_match('/^data:image\/(jpeg|jpg|png|webp|gif|bmp);base64,(.+)$/s', $value, $matches)) {
+                $decoded = base64_decode(preg_replace('/\s+/', '', $matches[2]), true);
+                if ($decoded === false || @getimagesizefromstring($decoded) === false) {
+                    $fail("El campo {$attribute} contiene una imagen Base64 inválida.");
+                } elseif (strlen($decoded) > $maxBytes) {
+                    $fail("El campo {$attribute} no debe superar los 10 MB.");
+                }
+                return;
+            }
+
+            $fail("El campo {$attribute} debe enviarse como archivo de imagen o Data URL Base64.");
+        }];
+    }
+
+    private function storeBase64PaymentImage(mixed $value): ?string
+    {
+        if (!is_string($value) || !preg_match('/^data:image\/(jpeg|jpg|png|webp|gif|bmp);base64,(.+)$/s', $value, $matches)) {
             return null;
         }
 
-        $file = $request->file("payments.{$index}.payment_image");
-        $imagePath = 'payments/' . uniqid() . '.jpg';
+        $extension = $matches[1] === 'jpeg' ? 'jpg' : $matches[1];
+        $imagePath = 'payments/' . uniqid() . '.' . $extension;
+        Storage::disk('public')->put(
+            $imagePath,
+            base64_decode(preg_replace('/\s+/', '', $matches[2]), true)
+        );
 
-        try {
-            $manager = new \Intervention\Image\ImageManager(new \Intervention\Image\Drivers\Gd\Driver());
-            $image = $manager->read($file);
-            $image->scaleDown(width: 1200);
-            Storage::disk('public')->put($imagePath, (string) $image->toJpeg(75));
-
-            return $imagePath;
-        } catch (\Exception $e) {
-            return $file->store('payments', 'public');
-        }
+        return $imagePath;
     }
 }
