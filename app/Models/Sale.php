@@ -32,7 +32,14 @@ class Sale extends Model
         static::creating(function ($sale) {
             $sale->uuid = Str::uuid();
             if (!$sale->sale_number) {
-                $latestSale = static::where('business_id', $sale->business_id)->latest('id')->first();
+                // Los números de ventas eliminadas (soft delete) siguen existiendo y
+                // continúan sujetos al índice único. Deben incluirse para no reutilizarlos.
+                // El bloqueo evita que dos transacciones calculen el mismo consecutivo.
+                $latestSale = static::withTrashed()
+                    ->where('business_id', $sale->business_id)
+                    ->orderByRaw("CAST(SUBSTRING(sale_number, 3) AS UNSIGNED) DESC")
+                    ->lockForUpdate()
+                    ->first();
                 $nextNumber = 1;
                 if ($latestSale && preg_match('/V-(\d+)/', $latestSale->sale_number, $matches)) {
                     $nextNumber = (int)$matches[1] + 1;
