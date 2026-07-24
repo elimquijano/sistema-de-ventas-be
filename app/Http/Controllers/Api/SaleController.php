@@ -268,7 +268,9 @@ class SaleController extends Controller
         }
 
         DB::transaction(function () use ($sale) {
-            $this->revertSaleImpacts($sale);
+            // Al reabrir, el stock continúa reservado por la venta pendiente.
+            // Solo se revierten caja, ganancia, pagos, crédito y descuentos.
+            $this->revertSaleImpacts($sale, restoreStock: false);
             $sale->update(['status' => 'pending']);
         });
 
@@ -785,7 +787,11 @@ class SaleController extends Controller
     public function destroy(Sale $sale)
     {
         DB::transaction(function () use ($sale) {
-            $this->revertSaleImpacts($sale);
+            // Una venta cancelada ya devolvió su stock y revirtió sus impactos.
+            // Evitamos ejecutar la reversión una segunda vez al eliminarla.
+            if ($sale->status !== 'cancelled') {
+                $this->revertSaleImpacts($sale);
+            }
 
             // Eliminar los items (Soft delete)
             $sale->items()->delete();
@@ -801,7 +807,7 @@ class SaleController extends Controller
      * Lógica centralizada para revertir todos los efectos financieros y de stock de una venta.
      * Protege la integridad de la caja, el inventario, las deudas y los gastos.
      */
-    protected function revertSaleImpacts(Sale $sale)
+    protected function revertSaleImpacts(Sale $sale, bool $restoreStock = true)
     {
         // 1. Revertir montos de caja registradora
         // Solo si la venta afectó la caja (estados completed o debt)
@@ -835,13 +841,15 @@ class SaleController extends Controller
             }
         }
 
-        // 2. Revertir Stock de productos
-        foreach ($sale->items as $item) {
-            if ($item->item_type === Product::class) {
-                // Asegurarse de tener el modelo del producto para usar increment
-                $product = Product::find($item->item_id);
-                if ($product) {
-                    $product->increment('stock', $item->quantity);
+        // 2. Devolver stock únicamente al cancelar o eliminar una venta activa.
+        // Al reabrir, el inventario debe permanecer reservado.
+        if ($restoreStock) {
+            foreach ($sale->items as $item) {
+                if ($item->item_type === Product::class) {
+                    $product = Product::find($item->item_id);
+                    if ($product) {
+                        $product->increment('stock', $item->quantity);
+                    }
                 }
             }
         }
