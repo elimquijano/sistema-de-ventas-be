@@ -438,17 +438,15 @@ class SaleController extends Controller
                 $item = $modelClass::findOrFail($itemData['id']);
                 $totalAmount += $item->price * $itemData['quantity'];
             }
+            $catalogTotal = $totalAmount;
 
             $payments = $validated['payments'] ?? [];
             $totalPaid = collect($payments)->sum('amount');
 
-            // Solo validar el total si no es delivery o si ya trae pagos
-            if (!$isDelivery || count($payments) > 0) {
-                if (bccomp($totalAmount, $totalPaid, 2) !== 0) {
-                    throw ValidationException::withMessages([
-                        'payments' => 'La suma de los pagos (' . $totalPaid . ') no coincide con el monto total de la venta (' . $totalAmount . ').'
-                    ]);
-                }
+            // Cuando la venta ya trae pagos, su suma representa el precio final acordado.
+            // Esto permite aplicar un precio manual, igual que en los pedidos rápidos.
+            if (count($payments) > 0) {
+                $totalAmount = $totalPaid;
             }
 
             $hasCredit = collect($payments)->contains('payment_method', 'credit');
@@ -471,9 +469,19 @@ class SaleController extends Controller
             ]);
 
             $totalProfit = 0;
-            foreach ($validated['items'] as $itemData) {
+            $remainingTotal = (float) $totalAmount;
+            $lastItemIndex = count($validated['items']) - 1;
+            foreach ($validated['items'] as $index => $itemData) {
                 $modelClass = $itemData['type'] === 'product' ? Product::class : Service::class;
                 $item = $modelClass::findOrFail($itemData['id']);
+                $catalogLineTotal = (float) $item->price * $itemData['quantity'];
+                $lineTotal = $index === $lastItemIndex
+                    ? $remainingTotal
+                    : round($catalogTotal > 0
+                        ? ($catalogLineTotal / $catalogTotal) * $totalAmount
+                        : 0, 2);
+                $remainingTotal -= $lineTotal;
+                $unitPrice = $lineTotal / $itemData['quantity'];
 
                 if ($itemData['type'] === 'product') {
                     if ($item->stock < $itemData['quantity']) {
@@ -482,19 +490,19 @@ class SaleController extends Controller
                     $item->decrement('stock', $itemData['quantity']);
 
                     // Calcular ganancia del producto: (Precio Venta - Costo) * Cantidad
-                    $totalProfit += ($item->price - $item->cost) * $itemData['quantity'];
+                    $totalProfit += ($unitPrice - $item->cost) * $itemData['quantity'];
                 } else {
                     // Para servicios, la ganancia es el precio total (asumiendo costo 0 o no definido)
-                    $totalProfit += $item->price * $itemData['quantity'];
+                    $totalProfit += $lineTotal;
                 }
 
                 $sale->items()->create([
                     'item_id' => $item->id,
                     'item_type' => $modelClass,
                     'item_name' => $item->name,
-                    'unit_price' => $item->price,
+                    'unit_price' => $unitPrice,
                     'quantity' => $itemData['quantity'],
-                    'total_price' => $item->price * $itemData['quantity'],
+                    'total_price' => $lineTotal,
                 ]);
             }
 
@@ -632,15 +640,27 @@ class SaleController extends Controller
 
             $totalPaid = collect($validated['payments'])->sum('amount');
 
-            if (bccomp($sale->total_amount, $totalPaid, 2) !== 0) {
-                throw ValidationException::withMessages([
-                    'payments' => 'La suma de los pagos (' . $totalPaid . ') no coincide con el monto total de la venta (' . $sale->total_amount . ').'
+            // El pago informado al entregar es el precio final de la venta.
+            $catalogTotal = (float) $sale->items->sum('total_price');
+            $remainingTotal = (float) $totalPaid;
+            $lastItemIndex = $sale->items->count() - 1;
+            foreach ($sale->items->values() as $index => $saleItem) {
+                $lineTotal = $index === $lastItemIndex
+                    ? $remainingTotal
+                    : round($catalogTotal > 0
+                        ? ((float) $saleItem->total_price / $catalogTotal) * $totalPaid
+                        : 0, 2);
+                $remainingTotal -= $lineTotal;
+                $saleItem->update([
+                    'unit_price' => $lineTotal / $saleItem->quantity,
+                    'total_price' => $lineTotal,
                 ]);
             }
 
             $hasCredit = collect($validated['payments'])->contains('payment_method', 'credit');
 
             $sale->update([
+                'total_amount' => $totalPaid,
                 'status' => $hasCredit ? 'debt' : 'completed',
                 'cash_register_id' => $cashRegister->id,
             ]);
