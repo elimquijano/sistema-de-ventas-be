@@ -3,7 +3,6 @@
 namespace App\Services;
 
 use App\Models\Sale;
-use App\Models\Product;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Http;
 
@@ -14,30 +13,27 @@ class WhatsAppService
      */
     public function formatSaleMessage(Sale $sale)
     {
-        $sale->load(['items', 'client']);
+        $sale->loadMissing('client');
         $client = $sale->client;
-        
-        // Asumiendo que sale_items tiene item_name y quantity
-        $itemsText = "";
-        foreach ($sale->items as $item) {
-            $itemsText .= "📦 *Producto:* {$item->quantity} x {$item->item_name}\n";
-        }
 
-        $mapsLink = "https://www.google.com/maps?q={$client->latitude},{$client->longitude}";
-        
-        $message = "🛵 *NUEVO PEDIDO ASIGNADO* 🛵\n"
-                 . "---------------------------\n"
-                 . "👤 *Cliente:* {$client->name}\n"
-                 . "📍 *Dirección:* " . ($sale->delivery_address ?? $client->address) . "\n"
-                 . "📞 *Teléfono:* {$client->phone}\n"
-                 . "🗺️ *Maps:* {$mapsLink}\n"
-                 . $itemsText
-                 . "💰 *Total a Cobrar:* S/ " . number_format($sale->total_amount, 2) . "\n"
-                 . "📝 *Notas:* " . ($sale->delivery_notes ?? 'Sin notas') . "\n"
-                 . "---------------------------\n"
-                 . "Favor de confirmar al entregar.";
-        
-        return $message;
+        $address = $this->shortenAddress($sale->delivery_address ?? $client->address);
+
+        return "🚨 *NUEVO PEDIDO* 🚨\n\n"
+             . "📍 Tienes un pedido para *{$address}*.\n\n"
+             . "📲 Revisa el aplicativo para ver todos los detalles.";
+    }
+
+    /**
+     * Limita una dirección a sus dos primeras secciones separadas por comas.
+     */
+    private function shortenAddress(?string $address): string
+    {
+        $parts = array_values(array_filter(
+            array_map('trim', explode(',', (string) $address)),
+            fn ($part) => $part !== ''
+        ));
+
+        return implode(', ', array_slice($parts, 0, 2));
     }
 
     /**
