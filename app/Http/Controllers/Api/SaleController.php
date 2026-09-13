@@ -8,7 +8,6 @@ use App\Models\Product;
 use App\Models\Service;
 use App\Models\CashRegister;
 use App\Models\SalePayment;
-use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -19,19 +18,12 @@ use Barryvdh\DomPDF\Facade\Pdf;
 use App\Models\Client;
 use App\Models\Category;
 use App\Models\Expense;
+use App\Notifications\OrderAssignedNotification;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
-use App\Services\WhatsAppService;
 
 class SaleController extends Controller
 {
-    protected $whatsappService;
-
-    public function __construct(WhatsAppService $whatsappService)
-    {
-        $this->whatsappService = $whatsappService;
-    }
-
     /**
      * Crear un pedido rápido para delivery.
      * Busca el cliente por teléfono o lo crea si es nuevo.
@@ -154,23 +146,13 @@ class SaleController extends Controller
                 }
             }
 
-            // 6. Preparar Mensaje para el Repartidor (WhatsApp)
-            // Solo enviar si el pedido no es de hace más de 15 minutos (para evitar duplicados en sincronización)
-            //$scheduledAt = Carbon::parse($sale->scheduled_at);
-            //if ($scheduledAt->isAfter(now()->subMinutes(15))) {
-            $whatsappMsg = $this->whatsappService->formatSaleMessage($sale);
-
-            // Buscar teléfono del rider
-            $rider = User::find($validated['rider_id']);
-            if ($rider && $rider->phone) {
-                $this->whatsappService->sendMessage($rider->phone, $whatsappMsg);
-            }
-            //}
-
             return $sale;
         });
 
-        return response()->json($sale->load('items', 'client', 'rider'), 201);
+        $sale->load('items', 'client', 'rider');
+        $this->notifyRider($sale);
+
+        return response()->json($sale, 201);
     }
 
     /**
@@ -189,6 +171,9 @@ class SaleController extends Controller
             'notes' => 'nullable|string',
             'scheduled_at' => 'nullable|date',
         ]);
+
+        $shouldNotifyRider = array_key_exists('rider_id', $validated)
+            && (int) $sale->rider_id !== (int) $validated['rider_id'];
 
         $sale = DB::transaction(function () use ($validated, $sale) {
             $item = $sale->items()->first();
@@ -227,19 +212,6 @@ class SaleController extends Controller
 
             if (isset($validated['rider_id'])) {
                 $sale->rider_id = $validated['rider_id'];
-                // Opcional: Re-enviar WhatsApp al nuevo rider si ha cambiado
-                if ($sale->isDirty('rider_id')) {
-                    $rider = User::find($validated['rider_id']);
-
-                    // Solo enviar si el pedido no es de hace más de 15 minutos (para evitar duplicados en sincronización)
-                    //$scheduledAtValue = $validated['scheduled_at'] ?? $sale->scheduled_at;
-                    //$scheduledAt = Carbon::parse($scheduledAtValue);
-
-                    if (/*$scheduledAt->isAfter(now()->subMinutes(15)) &&*/$rider && $rider->phone) {
-                        $whatsappMsg = $this->whatsappService->formatSaleMessage($sale);
-                        $this->whatsappService->sendMessage($rider->phone, $whatsappMsg);
-                    }
-                }
             }
 
             if (isset($validated['notes'])) {
@@ -255,7 +227,12 @@ class SaleController extends Controller
             return $sale;
         });
 
-        return response()->json($sale->load('items', 'client', 'rider'));
+        $sale->load('items', 'client', 'rider');
+        if ($shouldNotifyRider) {
+            $this->notifyRider($sale);
+        }
+
+        return response()->json($sale);
     }
 
     /**
@@ -601,7 +578,12 @@ class SaleController extends Controller
             return $sale;
         });
 
-        return response()->json($sale->load('items', 'payments', 'client', 'rider'), 201);
+        $sale->load('items', 'payments', 'client', 'rider');
+        if ($sale->is_delivery && $sale->rider) {
+            $this->notifyRider($sale);
+        }
+
+        return response()->json($sale, 201);
     }
 
     public function confirmDelivery(Request $request, Sale $sale)
@@ -980,5 +962,22 @@ class SaleController extends Controller
     {
         $sale = Sale::withTrashed()->findOrFail($id);
         return response()->json($sale->getDeepTimeline());
+    }
+
+    private function notifyRider(Sale $sale): void
+    {
+        if (! $sale->rider) {
+            return;
+        }
+
+        try {
+            $sale->rider->notify(new OrderAssignedNotification($sale));
+        } catch (\Throwable $exception) {
+            Log::error('El pedido fue guardado, pero no se pudo crear su notificación.', [
+                'sale_id' => $sale->id,
+                'user_id' => $sale->rider_id,
+                'exception' => $exception,
+            ]);
+        }
     }
 }

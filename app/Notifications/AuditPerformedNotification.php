@@ -3,6 +3,7 @@
 namespace App\Notifications;
 
 use App\Models\Audit;
+use App\Notifications\Channels\PreferredNotificationChannel;
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Notification;
 
@@ -27,7 +28,11 @@ class AuditPerformedNotification extends Notification
      */
     public function via(object $notifiable): array
     {
-        return ['database'];
+        if ($notifiable->status !== 'active' || ! $notifiable->receive_notifications) {
+            return [];
+        }
+
+        return ['database', PreferredNotificationChannel::class];
     }
 
     /**
@@ -51,6 +56,26 @@ class AuditPerformedNotification extends Notification
             'message' => $message,
             'actor_name' => $actorName,
             'title' => $this->getFriendlyTitle(),
+        ];
+    }
+
+    /**
+     * @return array{title:string, body:string, data:array<string, mixed>}
+     */
+    public function toPreferredChannel(object $notifiable): array
+    {
+        $data = $this->toArray($notifiable);
+
+        return [
+            'title' => $data['title'],
+            'body' => $data['message'],
+            'data' => [
+                'type' => 'system_notification',
+                'audit_id' => $data['audit_id'],
+                'event' => $data['event'],
+                'auditable_type' => $data['auditable_type'],
+                'auditable_id' => $data['auditable_id'],
+            ],
         ];
     }
 

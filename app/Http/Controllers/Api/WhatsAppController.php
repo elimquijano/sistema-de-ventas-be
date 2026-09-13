@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Sale;
-use App\Models\User;
 use App\Services\WhatsAppService;
 use Illuminate\Http\Request;
 
@@ -26,20 +25,24 @@ class WhatsAppController extends Controller
             'phone' => 'nullable|string|max:20',
         ]);
 
-        $rider = $sale->rider;
-        $targetPhone = $request->phone ?? ($rider ? $rider->phone : null);
+        $sale->loadMissing(['client', 'items', 'rider']);
+        $targetPhone = $request->phone ?? $sale->rider?->phone;
 
-        if (!$targetPhone) {
+        if (! $targetPhone) {
             return response()->json(['message' => 'No se encontró un teléfono de destino.'], 422);
         }
 
         $message = $this->whatsappService->formatSaleMessage($sale);
-        $this->whatsappService->sendMessage($targetPhone, $message);
+        $sent = $this->whatsappService->sendMessage($targetPhone, $message);
+
+        if (! $sent) {
+            return response()->json(['message' => 'No se pudo enviar el mensaje por WhatsApp.'], 502);
+        }
 
         return response()->json([
             'message' => 'Mensaje enviado correctamente.',
             'target_phone' => $targetPhone,
-            'whatsapp_message' => $message
+            'whatsapp_message' => $message,
         ]);
     }
 }

@@ -47,6 +47,30 @@ class UserController extends Controller
     {
         $creator = auth()->user();
         $data = $request->validated();
+        $willBeInactive = ($data['status'] ?? 'active') === 'inactive';
+
+        if (! $willBeInactive
+            && ($data['notification_channel'] ?? 'whatsapp') === 'push'
+            && ($data['receive_notifications'] ?? false)) {
+            return response()->json([
+                'message' => 'El usuario debe registrar push desde su dispositivo antes de activar este canal.',
+                'errors' => [
+                    'notification_channel' => ['El usuario no tiene un identificador FCM registrado.'],
+                ],
+            ], 422);
+        }
+
+        if (! $willBeInactive
+            && in_array(($data['notification_channel'] ?? 'whatsapp'), ['whatsapp', 'sms'], true)
+            && ($data['receive_notifications'] ?? false)
+            && empty($data['phone'])) {
+            return response()->json([
+                'message' => 'El usuario debe tener un teléfono antes de activar este canal.',
+                'errors' => [
+                    'phone' => ['Registra el teléfono del usuario antes de habilitar notificaciones.'],
+                ],
+            ], 422);
+        }
 
         $data['password'] = Hash::make($data['password']);
 
@@ -78,10 +102,36 @@ class UserController extends Controller
             unset($data['business_id']);
         }
 
-        if ($request->has('password') && !empty($request->password)) {
+        if ($request->has('password') && ! empty($request->password)) {
             $data['password'] = Hash::make($request->password);
         } else {
             unset($data['password']);
+        }
+
+        $channel = $data['notification_channel'] ?? $user->notification_channel;
+        $enabled = $data['receive_notifications'] ?? $user->receive_notifications;
+        $phone = array_key_exists('phone', $data) ? $data['phone'] : $user->phone;
+        $willBeInactive = ($data['status'] ?? $user->status) === 'inactive';
+
+        if (! $willBeInactive && $channel === 'push' && $enabled && ! $user->fcm_token) {
+            return response()->json([
+                'message' => 'El usuario debe registrar push desde su dispositivo antes de activar este canal.',
+                'errors' => [
+                    'notification_channel' => ['El usuario no tiene un identificador FCM registrado.'],
+                ],
+            ], 422);
+        }
+
+        if (! $willBeInactive
+            && in_array($channel, ['whatsapp', 'sms'], true)
+            && $enabled
+            && ! $phone) {
+            return response()->json([
+                'message' => 'El usuario debe tener un teléfono antes de activar este canal.',
+                'errors' => [
+                    'phone' => ['Registra el teléfono del usuario antes de habilitar notificaciones.'],
+                ],
+            ], 422);
         }
 
         $user->update($data);

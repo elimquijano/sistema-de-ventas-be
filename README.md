@@ -7,6 +7,25 @@
 <a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
 </p>
 
+## Notificaciones Firebase Cloud Messaging
+
+El backend envía notificaciones push mediante la API HTTP v1 de Firebase. Para habilitarla:
+
+1. En Firebase Console abre **Configuración del proyecto > Cuentas de servicio** y genera una clave privada JSON.
+2. Coloca el archivo descargado en `storage/app/firebase/`. Si existe un solo JSON, se detecta automáticamente y no hace falta renombrarlo. Los JSON de esa carpeta están excluidos de Git.
+3. Si hay varios JSON o usas otra ubicación, configura `GOOGLE_APPLICATION_CREDENTIALS` en `.env`. `FIREBASE_PROJECT_ID` es opcional porque normalmente se lee del JSON.
+4. Ejecuta `php artisan migrate` y verifica que la API Firebase Cloud Messaging HTTP v1 esté habilitada en Google Cloud.
+
+El frontend gestiona el toggle de push mediante:
+
+- `GET /api/notification-settings`
+- `POST /api/notification-settings/token`
+- `DELETE /api/notification-settings/token`
+
+`POST` recibe `{"token":"TOKEN_FCM"}` y automáticamente habilita push. `DELETE` elimina el token y vuelve a WhatsApp. El frontend no necesita cambiar el canal por separado.
+
+La implementación del toggle, service worker, recepción en primer plano y pantalla de usuarios está documentada en [`docs/FRONTEND_NOTIFICACIONES_FIREBASE.md`](docs/FRONTEND_NOTIFICACIONES_FIREBASE.md).
+
 ## About Laravel
 
 Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:

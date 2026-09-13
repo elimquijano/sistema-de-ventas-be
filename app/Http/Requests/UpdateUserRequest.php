@@ -31,6 +31,7 @@ class UpdateUserRequest extends FormRequest
             'role_ids.*' => 'exists:roles,id',
             'business_id' => 'sometimes|nullable|exists:businesses,id',
             'receive_notifications' => 'sometimes|boolean',
+            'notification_channel' => 'sometimes|in:whatsapp,sms,push',
         ];
     }
 }

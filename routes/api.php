@@ -12,6 +12,7 @@ use App\Http\Controllers\Api\FileController;
 use App\Http\Controllers\Api\LoanController;
 use App\Http\Controllers\Api\ModuleController;
 use App\Http\Controllers\Api\NotificationController;
+use App\Http\Controllers\Api\NotificationSettingController;
 use App\Http\Controllers\Api\PermissionController;
 use App\Http\Controllers\Api\AssetController;
 use App\Http\Controllers\Api\AssetLoanController;
@@ -68,6 +69,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('users/{user}/roles', [UserController::class, 'assignRoles']);
 
     // Notifications routes
+    Route::get('notification-settings', [NotificationSettingController::class, 'show']);
+    Route::patch('notification-settings', [NotificationSettingController::class, 'update']);
+    Route::post('notification-settings/token', [NotificationSettingController::class, 'storeToken']);
+    Route::put('notification-settings/token', [NotificationSettingController::class, 'updateToken']);
+    Route::delete('notification-settings/token', [NotificationSettingController::class, 'destroyToken']);
     Route::get('notifications/unread-count', [NotificationController::class, 'unreadCount']);
     Route::apiResource('notifications', NotificationController::class)->only(['index', 'destroy']);
     Route::patch('notifications/{notification}/read', [NotificationController::class, 'markAsRead']);

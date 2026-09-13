@@ -10,9 +10,15 @@ use Spatie\Permission\Traits\HasRoles;
 
 class User extends Authenticatable
 {
-    use HasApiTokens, HasFactory, Notifiable, HasRoles;
+    use HasApiTokens, HasFactory, HasRoles, Notifiable;
 
     protected $guard_name = 'api';
+
+    protected $attributes = [
+        'receive_notifications' => false,
+        'notification_channel' => 'whatsapp',
+        'fcm_target_type' => 'token',
+    ];
 
     protected $fillable = [
         'first_name',
@@ -23,14 +29,16 @@ class User extends Authenticatable
         'avatar',
         'status',
         'receive_notifications',
+        'notification_channel',
         'last_login_at',
         'last_login_ip',
-        'business_id'
+        'business_id',
     ];
 
     protected $hidden = [
         'password',
         'remember_token',
+        'fcm_token',
     ];
 
     protected $casts = [
@@ -40,16 +48,45 @@ class User extends Authenticatable
         'receive_notifications' => 'boolean',
     ];
 
-    protected $appends = ['full_name', 'initials'];
+    protected $appends = ['full_name', 'initials', 'has_fcm_token'];
+
+    protected static function booted(): void
+    {
+        static::saving(function (User $user): void {
+            if ($user->status === 'inactive') {
+                $user->forceFill([
+                    'notification_channel' => 'whatsapp',
+                    'receive_notifications' => false,
+                ]);
+            }
+
+            if ($user->notification_channel !== 'push') {
+                $user->forceFill([
+                    'fcm_token' => null,
+                    'fcm_target_type' => 'token',
+                ]);
+            }
+        });
+    }
 
     public function getFullNameAttribute()
     {
-        return $this->first_name . ' ' . $this->last_name;
+        return $this->first_name.' '.$this->last_name;
     }
 
     public function getInitialsAttribute()
     {
-        return strtoupper(substr((string)$this->first_name, 0, 1) . substr((string)$this->last_name, 0, 1));
+        return strtoupper(substr((string) $this->first_name, 0, 1).substr((string) $this->last_name, 0, 1));
+    }
+
+    public function getHasFcmTokenAttribute(): bool
+    {
+        return ! empty($this->fcm_token);
+    }
+
+    public function getFcmTargetTypeAttribute(?string $value): ?string
+    {
+        return $this->fcm_token ? ($value ?? 'token') : null;
     }
 
     public function updateLastLogin($ip = null)

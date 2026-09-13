@@ -4,6 +4,8 @@ namespace Tests\Unit;
 
 use App\Models\Client;
 use App\Models\Sale;
+use App\Models\SaleItem;
+use App\Services\OrderNotificationFormatter;
 use App\Services\WhatsAppService;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
@@ -19,13 +21,21 @@ class WhatsAppServiceTest extends TestCase
         $sale->setRelation('client', new Client([
             'address' => 'Dirección alternativa, Huánuco, Perú',
         ]));
+        $sale->setRelation('items', collect([
+            new SaleItem(['item_name' => 'Pollo a la brasa', 'quantity' => 2]),
+            new SaleItem(['item_name' => 'Gaseosa personal', 'quantity' => 1]),
+        ]));
 
-        $message = (new WhatsAppService())->formatSaleMessage($sale);
+        $message = (new WhatsAppService(new OrderNotificationFormatter))->formatSaleMessage($sale);
 
         $this->assertSame(
             "🚨 *NUEVO PEDIDO* 🚨\n\n"
-            . "📍 Tienes un pedido para *jr san miguel, amarilis*.\n\n"
-            . "📲 Revisa el aplicativo para ver todos los detalles.",
+            ."📦 *Productos*\n"
+            ."• 2 × Pollo a la brasa\n"
+            ."• 1 × Gaseosa personal\n\n"
+            ."📍 *Ubicación*\n"
+            ."jr san miguel, amarilis\n\n"
+            .'📲 *Revisa la app* para ver todos los detalles.',
             $message
         );
         $this->assertStringNotContainsString('Departamento de Huánuco', $message);
@@ -35,15 +45,18 @@ class WhatsAppServiceTest extends TestCase
     #[Test]
     public function it_uses_the_client_address_when_the_sale_has_no_delivery_address(): void
     {
-        $sale = new Sale();
+        $sale = new Sale;
         $sale->setRelation('client', new Client([
             'address' => 'Av. Universitaria, Pillco Marca, Huánuco, Perú',
         ]));
+        $sale->setRelation('items', collect([
+            new SaleItem(['item_name' => 'Pizza familiar', 'quantity' => 1]),
+        ]));
 
-        $message = (new WhatsAppService())->formatSaleMessage($sale);
+        $message = (new WhatsAppService(new OrderNotificationFormatter))->formatSaleMessage($sale);
 
         $this->assertStringContainsString(
-            'Tienes un pedido para *Av. Universitaria, Pillco Marca*.',
+            "📍 *Ubicación*\nAv. Universitaria, Pillco Marca",
             $message
         );
     }
