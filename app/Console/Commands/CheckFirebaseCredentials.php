@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Services\FirebaseCloudMessagingService;
+use App\Services\GoogleAccessTokenService;
 use Illuminate\Console\Command;
 use Throwable;
 
@@ -10,10 +11,12 @@ class CheckFirebaseCredentials extends Command
 {
     protected $signature = 'firebase:check';
 
-    protected $description = 'Verificar que PHP pueda localizar y leer las credenciales de Firebase';
+    protected $description = 'Verificar las credenciales y la autenticación OAuth de Firebase';
 
-    public function handle(FirebaseCloudMessagingService $firebase): int
-    {
+    public function handle(
+        FirebaseCloudMessagingService $firebase,
+        GoogleAccessTokenService $accessTokens
+    ): int {
         $this->line('Base del proyecto: '.base_path());
         $this->line('Storage: '.storage_path());
         $this->line('Ruta configurada: '.((string) config('services.firebase.credentials') ?: '(automática)'));
@@ -31,6 +34,9 @@ class CheckFirebaseCredentials extends Command
             $this->line('Archivo: '.$path);
             $this->line('Project ID: '.($credentials['project_id'] ?? '(no definido)'));
             $this->line('Service account: '.($credentials['client_email'] ?? '(no definido)'));
+
+            $accessTokens->forServiceAccount($credentials);
+            $this->info('Autenticación OAuth con Google completada correctamente.');
 
             return self::SUCCESS;
         } catch (Throwable $exception) {
