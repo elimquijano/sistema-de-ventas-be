@@ -83,8 +83,7 @@ class FirebaseCloudMessagingService
      */
     private function credentials(): array
     {
-        $configuredPath = (string) config('services.firebase.credentials');
-        $path = $this->credentialsPath($configuredPath);
+        $path = $this->resolvedCredentialsPath();
 
         try {
             $credentials = json_decode((string) file_get_contents($path), true, 512, JSON_THROW_ON_ERROR);
@@ -105,8 +104,10 @@ class FirebaseCloudMessagingService
         return $credentials;
     }
 
-    private function credentialsPath(string $configuredPath): string
+    public function resolvedCredentialsPath(): string
     {
+        $configuredPath = trim((string) config('services.firebase.credentials'));
+
         if ($configuredPath !== '') {
             $path = $this->absolutePath($configuredPath);
 
@@ -115,28 +116,83 @@ class FirebaseCloudMessagingService
             }
         }
 
-        $credentialsDirectory = (string) config(
-            'services.firebase.credentials_directory',
-            storage_path('app/firebase')
-        );
-        $files = glob(rtrim($credentialsDirectory, '\\/').DIRECTORY_SEPARATOR.'*.json') ?: [];
-        $files = array_values(array_filter($files, fn (string $file): bool => is_readable($file)));
+        $directories = $this->credentialDirectories($configuredPath);
+        foreach ($directories as $directory) {
+            if (! is_dir($directory) || ! is_readable($directory)) {
+                continue;
+            }
 
-        if (count($files) === 1) {
-            return $files[0];
-        }
+            $files = collect(glob($directory.DIRECTORY_SEPARATOR.'*.json') ?: [])
+                ->filter(fn (string $file): bool => $this->isServiceAccountFile($file))
+                ->unique()
+                ->values();
 
-        if (count($files) > 1) {
-            throw new RuntimeException(
-                'Hay varios JSON de Firebase. Define GOOGLE_APPLICATION_CREDENTIALS con el archivo que se debe usar.'
-            );
+            if ($files->count() === 1) {
+                return $files->first();
+            }
+
+            if ($files->count() > 1) {
+                throw new RuntimeException(
+                    "Se encontraron varias cuentas de servicio Firebase en {$directory}. Define GOOGLE_APPLICATION_CREDENTIALS con una ruta exacta."
+                );
+            }
         }
 
         throw new RuntimeException(
-            $configuredPath !== ''
-                ? 'La ruta configurada no existe y tampoco se encontró un JSON de Firebase en storage/app/firebase.'
-                : 'No se encontró el JSON de Firebase en storage/app/firebase.'
+            'PHP no encontró un JSON de cuenta de servicio Firebase legible. Rutas revisadas: '
+            .implode(', ', $directories)
         );
+    }
+
+    /** @return array<int, string> */
+    private function credentialDirectories(string $configuredPath): array
+    {
+        $configuredDirectory = (string) config(
+            'services.firebase.credentials_directory',
+            storage_path('app/firebase')
+        );
+        $directories = [
+            $configuredDirectory,
+            storage_path('app/firebase'),
+            storage_path('app/private/firebase'),
+            storage_path('app/private'),
+            storage_path('app'),
+            base_path('firebase'),
+            base_path(),
+        ];
+
+        if ($configuredPath !== '') {
+            $absolutePath = $this->absolutePath($configuredPath);
+            array_unshift(
+                $directories,
+                is_dir($absolutePath) ? $absolutePath : dirname($absolutePath)
+            );
+        }
+
+        return collect($directories)
+            ->filter()
+            ->map(fn (string $directory): string => rtrim($directory, '\\/'))
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    private function isServiceAccountFile(string $path): bool
+    {
+        if (! is_file($path) || ! is_readable($path)) {
+            return false;
+        }
+
+        try {
+            $contents = json_decode((string) file_get_contents($path), true, 512, JSON_THROW_ON_ERROR);
+        } catch (JsonException) {
+            return false;
+        }
+
+        return ($contents['type'] ?? null) === 'service_account'
+            && ! empty($contents['project_id'])
+            && ! empty($contents['client_email'])
+            && ! empty($contents['private_key']);
     }
 
     private function absolutePath(string $path): string
