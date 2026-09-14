@@ -40,6 +40,7 @@ return [
             'GOOGLE_APPLICATION_CREDENTIALS',
             env('FIREBASE_CREDENTIALS')
         ),
+        'credentials_directory' => storage_path('app/firebase'),
         'project_id' => env('FIREBASE_PROJECT_ID'),
         'android_channel_id' => env('FIREBASE_ANDROID_CHANNEL_ID', 'default'),
     ],

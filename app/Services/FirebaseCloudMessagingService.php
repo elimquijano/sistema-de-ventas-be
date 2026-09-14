@@ -113,13 +113,13 @@ class FirebaseCloudMessagingService
             if (is_file($path) && is_readable($path)) {
                 return $path;
             }
-
-            throw new RuntimeException(
-                'GOOGLE_APPLICATION_CREDENTIALS no apunta a un JSON de Firebase legible.'
-            );
         }
 
-        $files = glob(storage_path('app/firebase/*.json')) ?: [];
+        $credentialsDirectory = (string) config(
+            'services.firebase.credentials_directory',
+            storage_path('app/firebase')
+        );
+        $files = glob(rtrim($credentialsDirectory, '\\/').DIRECTORY_SEPARATOR.'*.json') ?: [];
         $files = array_values(array_filter($files, fn (string $file): bool => is_readable($file)));
 
         if (count($files) === 1) {
@@ -133,7 +133,9 @@ class FirebaseCloudMessagingService
         }
 
         throw new RuntimeException(
-            'No se encontró el JSON de Firebase en storage/app/firebase.'
+            $configuredPath !== ''
+                ? 'La ruta configurada no existe y tampoco se encontró un JSON de Firebase en storage/app/firebase.'
+                : 'No se encontró el JSON de Firebase en storage/app/firebase.'
         );
     }
 

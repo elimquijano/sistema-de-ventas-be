@@ -11,13 +11,17 @@ use Tests\TestCase;
 
 class FirebaseCloudMessagingServiceTest extends TestCase
 {
+    private string $credentialsDirectory;
+
     private string $credentialsPath;
 
     protected function setUp(): void
     {
         parent::setUp();
 
-        $this->credentialsPath = tempnam(sys_get_temp_dir(), 'firebase-test-');
+        $this->credentialsDirectory = sys_get_temp_dir().DIRECTORY_SEPARATOR.'firebase-test-'.uniqid();
+        mkdir($this->credentialsDirectory);
+        $this->credentialsPath = $this->credentialsDirectory.DIRECTORY_SEPARATOR.'service-account.json';
         file_put_contents($this->credentialsPath, json_encode([
             'type' => 'service_account',
             'project_id' => 'test-project',
@@ -26,7 +30,10 @@ class FirebaseCloudMessagingServiceTest extends TestCase
             'token_uri' => 'https://oauth2.googleapis.com/token',
         ], JSON_THROW_ON_ERROR));
 
-        config(['services.firebase.credentials' => $this->credentialsPath]);
+        config([
+            'services.firebase.credentials' => $this->credentialsPath,
+            'services.firebase.credentials_directory' => $this->credentialsDirectory,
+        ]);
         $accessTokens = Mockery::mock(GoogleAccessTokenService::class);
         $accessTokens->shouldReceive('forServiceAccount')
             ->once()
@@ -38,6 +45,10 @@ class FirebaseCloudMessagingServiceTest extends TestCase
     {
         if (isset($this->credentialsPath) && is_file($this->credentialsPath)) {
             unlink($this->credentialsPath);
+        }
+
+        if (isset($this->credentialsDirectory) && is_dir($this->credentialsDirectory)) {
+            rmdir($this->credentialsDirectory);
         }
 
         parent::tearDown();
@@ -90,5 +101,24 @@ class FirebaseCloudMessagingServiceTest extends TestCase
             [],
             'token'
         );
+    }
+
+    public function test_it_auto_discovers_the_json_when_the_configured_path_is_invalid(): void
+    {
+        config(['services.firebase.credentials' => $this->credentialsDirectory.DIRECTORY_SEPARATOR.'missing.json']);
+
+        Http::fake([
+            'fcm.googleapis.com/*' => Http::response([
+                'name' => 'projects/test-project/messages/message-id',
+            ]),
+        ]);
+
+        $sent = app(FirebaseCloudMessagingService::class)->send(
+            'device-token',
+            'Nuevo pedido',
+            'Mensaje'
+        );
+
+        $this->assertTrue($sent);
     }
 }
