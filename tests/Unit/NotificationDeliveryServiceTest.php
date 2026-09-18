@@ -61,7 +61,7 @@ class NotificationDeliveryServiceTest extends TestCase
         $this->assertTrue($sent);
     }
 
-    public function test_it_does_not_send_to_disabled_users(): void
+    public function test_system_notifications_do_not_send_without_opt_in(): void
     {
         $firebase = Mockery::mock(FirebaseCloudMessagingService::class);
         $whatsApp = Mockery::mock(WhatsAppService::class);
@@ -81,5 +81,64 @@ class NotificationDeliveryServiceTest extends TestCase
         ]);
 
         $this->assertFalse($sent);
+    }
+
+    public function test_orders_use_push_even_when_system_notifications_are_disabled(): void
+    {
+        $firebase = Mockery::mock(FirebaseCloudMessagingService::class);
+        $whatsApp = Mockery::mock(WhatsAppService::class);
+        $user = new User([
+            'status' => 'active',
+            'receive_notifications' => false,
+            'notification_channel' => 'push',
+        ]);
+        $user->forceFill(['fcm_token' => 'rider-device']);
+
+        $firebase->shouldReceive('send')->once()
+            ->with('rider-device', 'Nuevo pedido', 'Pedido asignado', ['type' => 'order_assigned'], 'token')
+            ->andReturnTrue();
+        $whatsApp->shouldNotReceive('sendMessage');
+
+        $this->assertTrue((new NotificationDeliveryService($firebase, $whatsApp))->send($user, [
+            'title' => 'Nuevo pedido',
+            'body' => 'Pedido asignado',
+            'data' => ['type' => 'order_assigned'],
+        ], false));
+    }
+
+    public function test_orders_use_whatsapp_even_when_system_notifications_are_disabled(): void
+    {
+        $firebase = Mockery::mock(FirebaseCloudMessagingService::class);
+        $whatsApp = Mockery::mock(WhatsAppService::class);
+        $user = new User([
+            'status' => 'active',
+            'receive_notifications' => false,
+            'notification_channel' => 'whatsapp',
+            'phone' => '999999999',
+        ]);
+
+        $firebase->shouldNotReceive('send');
+        $whatsApp->shouldReceive('sendMessage')->once()
+            ->with('999999999', 'Mensaje bonito del pedido')->andReturnTrue();
+
+        $this->assertTrue((new NotificationDeliveryService($firebase, $whatsApp))->send($user, [
+            'title' => 'Nuevo pedido',
+            'body' => 'Pedido asignado',
+            'whatsapp_body' => 'Mensaje bonito del pedido',
+        ], false));
+    }
+
+    public function test_inactive_riders_do_not_receive_orders(): void
+    {
+        $firebase = Mockery::mock(FirebaseCloudMessagingService::class);
+        $whatsApp = Mockery::mock(WhatsAppService::class);
+        $user = new User(['status' => 'inactive', 'receive_notifications' => true]);
+
+        $firebase->shouldNotReceive('send');
+        $whatsApp->shouldNotReceive('sendMessage');
+
+        $this->assertFalse((new NotificationDeliveryService($firebase, $whatsApp))->send($user, [
+            'title' => 'Nuevo pedido', 'body' => 'Pedido asignado',
+        ], false));
     }
 }

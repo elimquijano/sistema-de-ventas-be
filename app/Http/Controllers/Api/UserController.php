@@ -50,8 +50,7 @@ class UserController extends Controller
         $willBeInactive = ($data['status'] ?? 'active') === 'inactive';
 
         if (! $willBeInactive
-            && ($data['notification_channel'] ?? 'whatsapp') === 'push'
-            && ($data['receive_notifications'] ?? false)) {
+            && ($data['notification_channel'] ?? 'whatsapp') === 'push') {
             return response()->json([
                 'message' => 'El usuario debe registrar push desde su dispositivo antes de activar este canal.',
                 'errors' => [
@@ -61,8 +60,8 @@ class UserController extends Controller
         }
 
         if (! $willBeInactive
+            && array_key_exists('notification_channel', $data)
             && in_array(($data['notification_channel'] ?? 'whatsapp'), ['whatsapp', 'sms'], true)
-            && ($data['receive_notifications'] ?? false)
             && empty($data['phone'])) {
             return response()->json([
                 'message' => 'El usuario debe tener un teléfono antes de activar este canal.',
@@ -109,11 +108,11 @@ class UserController extends Controller
         }
 
         $channel = $data['notification_channel'] ?? $user->notification_channel;
-        $enabled = $data['receive_notifications'] ?? $user->receive_notifications;
+        $selectingChannel = array_key_exists('notification_channel', $data);
         $phone = array_key_exists('phone', $data) ? $data['phone'] : $user->phone;
         $willBeInactive = ($data['status'] ?? $user->status) === 'inactive';
 
-        if (! $willBeInactive && $channel === 'push' && $enabled && ! $user->fcm_token) {
+        if (! $willBeInactive && $selectingChannel && $channel === 'push' && ! $user->fcm_token) {
             return response()->json([
                 'message' => 'El usuario debe registrar push desde su dispositivo antes de activar este canal.',
                 'errors' => [
@@ -123,8 +122,8 @@ class UserController extends Controller
         }
 
         if (! $willBeInactive
+            && $selectingChannel
             && in_array($channel, ['whatsapp', 'sms'], true)
-            && $enabled
             && ! $phone) {
             return response()->json([
                 'message' => 'El usuario debe tener un teléfono antes de activar este canal.',

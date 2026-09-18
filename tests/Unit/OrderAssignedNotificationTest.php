@@ -6,11 +6,32 @@ use App\Models\Client;
 use App\Models\Sale;
 use App\Models\SaleItem;
 use App\Models\User;
+use App\Notifications\Channels\PreferredNotificationChannel;
 use App\Notifications\OrderAssignedNotification;
+use App\Services\NotificationDeliveryService;
+use Mockery;
 use Tests\TestCase;
 
 class OrderAssignedNotificationTest extends TestCase
 {
+    public function test_orders_bypass_system_opt_in_through_the_actual_notification_channel(): void
+    {
+        $rider = new User(['status' => 'active', 'receive_notifications' => false]);
+        $sale = new Sale(['id' => 15]);
+        $sale->setRelation('client', new Client);
+        $sale->setRelation('items', collect());
+        $notification = new OrderAssignedNotification($sale);
+
+        $this->assertSame(['database', PreferredNotificationChannel::class], $notification->via($rider));
+
+        $delivery = Mockery::mock(NotificationDeliveryService::class);
+        $delivery->shouldReceive('send')->once()
+            ->with($rider, Mockery::on(fn (array $message): bool => $message['data']['sale_id'] === 15), false)
+            ->andReturnTrue();
+
+        $this->assertTrue((new PreferredNotificationChannel($delivery))->send($rider, $notification));
+    }
+
     public function test_it_builds_a_compact_push_and_a_detailed_whatsapp_message(): void
     {
         $sale = new Sale([

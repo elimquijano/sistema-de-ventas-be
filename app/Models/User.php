@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Facades\Log;
 use Laravel\Sanctum\HasApiTokens;
 use Spatie\Permission\Traits\HasRoles;
 
@@ -53,17 +54,27 @@ class User extends Authenticatable
     protected static function booted(): void
     {
         static::saving(function (User $user): void {
-            if ($user->status === 'inactive') {
+            $becameInactive = $user->isDirty('status') && $user->status === 'inactive';
+            if ($becameInactive) {
                 $user->forceFill([
                     'notification_channel' => 'whatsapp',
-                    'receive_notifications' => false,
                 ]);
             }
 
-            if ($user->notification_channel !== 'push') {
+            if ($becameInactive
+                || ($user->isDirty('notification_channel') && $user->notification_channel !== 'push')) {
                 $user->forceFill([
                     'fcm_token' => null,
                     'fcm_target_type' => 'token',
+                ]);
+            }
+        });
+
+        static::updated(function (User $user): void {
+            if ($user->wasChanged('fcm_token') && ! $user->fcm_token) {
+                Log::notice('Registro push eliminado al actualizar usuario.', [
+                    'user_id' => $user->id,
+                    'reason' => $user->status === 'inactive' ? 'user_inactive' : 'channel_or_token_changed',
                 ]);
             }
         });

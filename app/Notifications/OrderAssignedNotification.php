@@ -17,11 +17,16 @@ class OrderAssignedNotification extends Notification
     /** @return array<int, string> */
     public function via(object $notifiable): array
     {
-        if ($notifiable->status !== 'active' || ! $notifiable->receive_notifications) {
+        if ($notifiable->status !== 'active') {
             return [];
         }
 
         return ['database', PreferredNotificationChannel::class];
+    }
+
+    public function requiresSystemOptIn(): bool
+    {
+        return false;
     }
 
     /** @return array<string, mixed> */

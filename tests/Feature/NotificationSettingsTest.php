@@ -2,10 +2,15 @@
 
 namespace Tests\Feature;
 
+use App\Exceptions\InvalidFcmTokenException;
 use App\Models\User;
+use App\Services\FirebaseCloudMessagingService;
+use App\Services\NotificationDeliveryService;
+use App\Services\WhatsAppService;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 use Laravel\Sanctum\Sanctum;
+use Mockery;
 use Tests\TestCase;
 
 class NotificationSettingsTest extends TestCase
@@ -46,7 +51,7 @@ class NotificationSettingsTest extends TestCase
         ])
             ->assertCreated()
             ->assertExactJson([
-                'receive_notifications' => true,
+                'receive_notifications' => false,
                 'notification_channel' => 'push',
                 'has_fcm_token' => true,
                 'fcm_target_type' => 'fid',
@@ -66,7 +71,7 @@ class NotificationSettingsTest extends TestCase
         $user->refresh();
         $this->assertNull($user->fcm_token);
         $this->assertSame('whatsapp', $user->notification_channel);
-        $this->assertTrue($user->receive_notifications);
+        $this->assertFalse($user->receive_notifications);
     }
 
     public function test_a_device_token_is_moved_to_the_latest_authenticated_user(): void
@@ -74,7 +79,7 @@ class NotificationSettingsTest extends TestCase
         $firstUser = User::factory()->create([
             'fcm_token' => 'shared-device-token',
             'notification_channel' => 'push',
-            'receive_notifications' => true,
+            'receive_notifications' => false,
             'phone' => '988888888',
         ]);
         $secondUser = User::factory()->create();
@@ -84,11 +89,11 @@ class NotificationSettingsTest extends TestCase
             ->assertCreated();
 
         $this->assertNull($firstUser->refresh()->fcm_token);
-        $this->assertTrue($firstUser->receive_notifications);
+        $this->assertFalse($firstUser->receive_notifications);
         $this->assertSame('whatsapp', $firstUser->notification_channel);
         $this->assertSame('shared-device-token', $secondUser->refresh()->fcm_token);
         $this->assertSame('push', $secondUser->notification_channel);
-        $this->assertTrue($secondUser->receive_notifications);
+        $this->assertFalse($secondUser->receive_notifications);
     }
 
     public function test_registering_a_token_automatically_enables_push(): void
@@ -104,7 +109,7 @@ class NotificationSettingsTest extends TestCase
         $this->postJson('/api/notification-settings/token', ['token' => 'valid-fcm-token'])
             ->assertCreated()
             ->assertExactJson([
-                'receive_notifications' => true,
+                'receive_notifications' => false,
                 'notification_channel' => 'push',
                 'has_fcm_token' => true,
                 'fcm_target_type' => 'token',
@@ -113,7 +118,7 @@ class NotificationSettingsTest extends TestCase
         $this->assertDatabaseHas('users', [
             'id' => $user->id,
             'notification_channel' => 'push',
-            'receive_notifications' => true,
+            'receive_notifications' => false,
         ]);
     }
 
@@ -179,7 +184,7 @@ class NotificationSettingsTest extends TestCase
         ])->assertOk()
             ->assertJsonPath('status', 'inactive')
             ->assertJsonPath('notification_channel', 'whatsapp')
-            ->assertJsonPath('receive_notifications', false)
+            ->assertJsonPath('receive_notifications', true)
             ->assertJsonPath('has_fcm_token', false);
 
         $user->refresh();
@@ -220,5 +225,140 @@ class NotificationSettingsTest extends TestCase
             ->assertJsonPath('has_fcm_token', false);
 
         $this->assertNull($user->refresh()->fcm_token);
+    }
+
+    public function test_token_operations_preserve_an_explicit_system_opt_in(): void
+    {
+        $user = User::factory()->create(['receive_notifications' => true]);
+        Sanctum::actingAs($user);
+
+        $this->postJson('/api/notification-settings/token', ['token' => 'first-device'])
+            ->assertCreated()->assertJsonPath('receive_notifications', true);
+
+        $this->putJson('/api/notification-settings/token', ['token' => 'second-device'])
+            ->assertOk()->assertJsonPath('receive_notifications', true);
+
+        $this->deleteJson('/api/notification-settings/token')->assertNoContent();
+        $this->assertTrue($user->refresh()->receive_notifications);
+    }
+
+    public function test_system_preference_can_be_set_without_a_phone_or_push_token(): void
+    {
+        $user = User::factory()->create(['phone' => null]);
+        Sanctum::actingAs($user);
+
+        $this->patchJson('/api/notification-settings', ['receive_notifications' => true])
+            ->assertOk()
+            ->assertJsonPath('receive_notifications', true)
+            ->assertJsonPath('has_fcm_token', false);
+
+        $this->assertTrue($user->refresh()->receive_notifications);
+    }
+
+    public function test_push_token_survives_time_and_unrelated_user_updates(): void
+    {
+        $user = User::factory()->create();
+        Sanctum::actingAs($user);
+        $this->postJson('/api/notification-settings/token', ['token' => 'persistent-device'])
+            ->assertCreated();
+
+        $this->travel(12)->hours();
+        try {
+            $user->refresh()->update(['first_name' => 'Nombre actualizado']);
+
+            $this->assertSame('persistent-device', $user->refresh()->fcm_token);
+            $this->assertSame('push', $user->notification_channel);
+            $this->assertFalse($user->receive_notifications);
+        } finally {
+            $this->travelBack();
+        }
+    }
+
+    public function test_changing_system_opt_in_does_not_disable_push_or_delete_its_token(): void
+    {
+        $user = User::factory()->create();
+        Sanctum::actingAs($user);
+        $this->postJson('/api/notification-settings/token', ['token' => 'rider-device'])
+            ->assertCreated();
+
+        foreach ([true, false] as $enabled) {
+            $this->patchJson('/api/notification-settings', ['receive_notifications' => $enabled])
+                ->assertOk()
+                ->assertJsonPath('receive_notifications', $enabled)
+                ->assertJsonPath('notification_channel', 'push')
+                ->assertJsonPath('has_fcm_token', true);
+        }
+
+        $this->assertSame('rider-device', $user->refresh()->fcm_token);
+    }
+
+    public function test_legacy_token_is_not_silently_deleted_by_an_unrelated_profile_save(): void
+    {
+        $user = User::factory()->create();
+        User::query()->whereKey($user->id)->update(['fcm_token' => 'legacy-device']);
+        $user->refresh()->update(['first_name' => 'Perfil actualizado']);
+
+        $this->assertSame('legacy-device', $user->refresh()->fcm_token);
+    }
+
+    public function test_firebase_unregistered_removes_only_the_invalid_token_and_preserves_opt_in(): void
+    {
+        $user = User::factory()->create([
+            'notification_channel' => 'push',
+            'fcm_token' => 'expired-device',
+            'receive_notifications' => true,
+        ]);
+        $firebase = Mockery::mock(FirebaseCloudMessagingService::class);
+        $firebase->shouldReceive('send')->once()->andThrow(new InvalidFcmTokenException('UNREGISTERED'));
+        $whatsApp = Mockery::mock(WhatsAppService::class);
+
+        $this->assertFalse((new NotificationDeliveryService($firebase, $whatsApp))->send($user, [
+            'title' => 'Sistema', 'body' => 'Mensaje',
+        ]));
+
+        $this->assertNull($user->refresh()->fcm_token);
+        $this->assertSame('whatsapp', $user->notification_channel);
+        $this->assertTrue($user->receive_notifications);
+    }
+
+    public function test_unregistered_response_for_an_old_token_does_not_delete_a_rotated_token(): void
+    {
+        $user = User::factory()->create([
+            'notification_channel' => 'push',
+            'fcm_token' => 'old-device',
+        ]);
+        $firebase = Mockery::mock(FirebaseCloudMessagingService::class);
+        $firebase->shouldReceive('send')->once()->andReturnUsing(function () use ($user): bool {
+            User::query()->whereKey($user->id)->update(['fcm_token' => 'new-device']);
+            throw new InvalidFcmTokenException('UNREGISTERED');
+        });
+        $whatsApp = Mockery::mock(WhatsAppService::class);
+
+        $this->assertFalse((new NotificationDeliveryService($firebase, $whatsApp))->send($user, [
+            'title' => 'Pedido', 'body' => 'Mensaje',
+        ], false));
+
+        $this->assertSame('new-device', $user->refresh()->fcm_token);
+        $this->assertSame('push', $user->notification_channel);
+        $this->assertFalse($user->receive_notifications);
+    }
+
+    public function test_temporary_push_errors_do_not_remove_the_token_or_change_system_preference(): void
+    {
+        $user = User::factory()->create([
+            'notification_channel' => 'push',
+            'fcm_token' => 'valid-device',
+        ]);
+        $firebase = Mockery::mock(FirebaseCloudMessagingService::class);
+        $firebase->shouldReceive('send')->once()->andThrow(new \RuntimeException('Firebase 503'));
+        $whatsApp = Mockery::mock(WhatsAppService::class);
+
+        $this->assertFalse((new NotificationDeliveryService($firebase, $whatsApp))->send($user, [
+            'title' => 'Pedido', 'body' => 'Mensaje',
+        ], false));
+
+        $this->assertSame('valid-device', $user->refresh()->fcm_token);
+        $this->assertSame('push', $user->notification_channel);
+        $this->assertFalse($user->receive_notifications);
     }
 }

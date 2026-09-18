@@ -24,8 +24,12 @@ class GoogleAccessTokenServiceTest extends TestCase
         $this->assertTrue(openssl_pkey_export($key, $privateKey, null, $keyOptions));
 
         Http::fake([
-            'oauth2.googleapis.com/token' => Http::response([
+            'oauth2.googleapis.com/token' => Http::sequence()->push([
                 'access_token' => 'generated-access-token',
+                'expires_in' => 3600,
+                'token_type' => 'Bearer',
+            ])->push([
+                'access_token' => 'renewed-access-token',
                 'expires_in' => 3600,
                 'token_type' => 'Bearer',
             ]),
@@ -41,6 +45,8 @@ class GoogleAccessTokenServiceTest extends TestCase
         $token = app(GoogleAccessTokenService::class)->forServiceAccount($credentials);
 
         $this->assertSame('generated-access-token', $token);
+        $this->assertSame($token, app(GoogleAccessTokenService::class)->forServiceAccount($credentials));
+        Http::assertSentCount(1);
         Http::assertSent(function ($request): bool {
             $parts = explode('.', (string) $request['assertion']);
             $claims = json_decode($this->base64UrlDecode($parts[1]), true);
@@ -51,6 +57,17 @@ class GoogleAccessTokenServiceTest extends TestCase
                 && $claims['scope'] === 'https://www.googleapis.com/auth/firebase.messaging'
                 && $claims['aud'] === 'https://oauth2.googleapis.com/token';
         });
+
+        $this->travel(61)->minutes();
+        try {
+            $this->assertSame(
+                'renewed-access-token',
+                app(GoogleAccessTokenService::class)->forServiceAccount($credentials)
+            );
+            Http::assertSentCount(2);
+        } finally {
+            $this->travelBack();
+        }
     }
 
     private function base64UrlDecode(string $value): string

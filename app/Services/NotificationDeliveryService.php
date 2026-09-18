@@ -17,9 +17,10 @@ class NotificationDeliveryService
     /**
      * @param  array{title:string, body:string, data?:array<string, mixed>, whatsapp_body?:string}  $message
      */
-    public function send(User $user, array $message): bool
+    public function send(User $user, array $message, bool $requiresSystemOptIn = true): bool
     {
-        if ($user->status !== 'active' || ! $user->receive_notifications) {
+        if ($user->status !== 'active'
+            || ($requiresSystemOptIn && ! $user->receive_notifications)) {
             return false;
         }
 
@@ -39,24 +40,40 @@ class NotificationDeliveryService
             return false;
         }
 
+        $deviceIdentifier = $user->fcm_token;
+        $targetType = $user->fcm_target_type ?? 'token';
+
         try {
             return $this->firebase->send(
-                $user->fcm_token,
+                $deviceIdentifier,
                 $message['title'],
                 $message['body'],
                 $message['data'] ?? [],
-                $user->fcm_target_type ?? 'token',
+                $targetType,
             );
         } catch (InvalidFcmTokenException $exception) {
             $values = [
                 'fcm_token' => null,
                 'fcm_target_type' => 'token',
                 'notification_channel' => 'whatsapp',
-                'receive_notifications' => $user->status === 'active' && ! empty($user->phone),
             ];
 
-            $user->forceFill($values)->saveQuietly();
-            Log::notice('Se eliminó un token FCM no registrado.', ['user_id' => $user->id]);
+            // No borrar un token nuevo registrado mientras Firebase respondía por el anterior.
+            $cleared = User::query()
+                ->whereKey($user->id)
+                ->where('fcm_token', $deviceIdentifier)
+                ->where('fcm_target_type', $targetType)
+                ->update($values);
+
+            if ($cleared) {
+                $user->refresh();
+            }
+
+            Log::notice('Firebase informó un registro push no registrado.', [
+                'user_id' => $user->id,
+                'reason' => 'firebase_unregistered',
+                'token_removed' => (bool) $cleared,
+            ]);
 
             return false;
         } catch (Throwable $exception) {

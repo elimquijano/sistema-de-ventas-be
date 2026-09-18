@@ -7,6 +7,7 @@ use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
 
 class NotificationSettingController extends Controller
@@ -24,16 +25,16 @@ class NotificationSettingController extends Controller
         ]);
 
         $channel = $validated['notification_channel'] ?? $request->user()->notification_channel;
-        $enabled = $validated['receive_notifications'] ?? $request->user()->receive_notifications;
+        $selectingChannel = array_key_exists('notification_channel', $validated);
 
-        if ($channel === 'push' && $enabled && ! $request->user()->fcm_token) {
+        if ($selectingChannel && $channel === 'push' && ! $request->user()->fcm_token) {
             return response()->json([
                 'message' => 'Registra primero un token FCM antes de elegir el canal push.',
                 'errors' => ['notification_channel' => ['El usuario no tiene un token FCM registrado.']],
             ], 422);
         }
 
-        if (in_array($channel, ['whatsapp', 'sms'], true) && $enabled && ! $request->user()->phone) {
+        if ($selectingChannel && in_array($channel, ['whatsapp', 'sms'], true) && ! $request->user()->phone) {
             return response()->json([
                 'message' => 'Registra primero un teléfono antes de habilitar este canal.',
                 'errors' => ['notification_channel' => ['El usuario no tiene un teléfono registrado.']],
@@ -99,9 +100,12 @@ class NotificationSettingController extends Controller
             'fcm_token' => null,
             'fcm_target_type' => 'token',
             'notification_channel' => 'whatsapp',
-            'receive_notifications' => $request->user()->status === 'active'
-                && ! empty($request->user()->phone),
         ])->save();
+
+        Log::notice('Registro push eliminado.', [
+            'user_id' => $request->user()->id,
+            'reason' => 'token_delete_endpoint',
+        ]);
 
         return response()->json(null, 204);
     }
@@ -128,18 +132,20 @@ class NotificationSettingController extends Controller
                     'fcm_token' => null,
                     'fcm_target_type' => 'token',
                     'notification_channel' => 'whatsapp',
-                    'receive_notifications' => $previousOwner->status === 'active'
-                        && ! empty($previousOwner->phone),
                 ];
 
                 $previousOwner->forceFill($values)->save();
+                Log::notice('Registro push eliminado.', [
+                    'user_id' => $previousOwner->id,
+                    'reason' => 'device_reassigned',
+                    'new_user_id' => $user->id,
+                ]);
             }
 
             $user->forceFill([
                 'fcm_token' => $token,
                 'fcm_target_type' => $targetType,
                 'notification_channel' => 'push',
-                'receive_notifications' => true,
             ])->save();
         });
     }

@@ -18,7 +18,9 @@ class PreferredNotificationChannel
 
         return $this->delivery->send(
             $notifiable,
-            $notification->toPreferredChannel($notifiable)
+            $notification->toPreferredChannel($notifiable),
+            ! method_exists($notification, 'requiresSystemOptIn')
+                || $notification->requiresSystemOptIn()
         );
     }
 }

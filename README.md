@@ -24,7 +24,11 @@ El frontend gestiona el toggle de push mediante:
 
 `POST` recibe `{"token":"TOKEN_FCM"}` y automáticamente habilita push. `DELETE` elimina el token y vuelve a WhatsApp. El frontend no necesita cambiar el canal por separado.
 
-La implementación del toggle, service worker, recepción en primer plano y pantalla de usuarios está documentada en [`docs/FRONTEND_NOTIFICACIONES_FIREBASE.md`](docs/FRONTEND_NOTIFICACIONES_FIREBASE.md).
+Los pedidos se notifican al usuario asignado en `rider_id` según su canal, independientemente de `receive_notifications`. Ese campo es una preferencia manual exclusiva de las notificaciones del sistema (préstamos, créditos y demás eventos habilitados). Registrar, eliminar o reasignar un token, cambiar de canal o marcar al usuario como inactivo no modifica esa preferencia.
+
+El toggle de push debe considerarse encendido con `notification_channel === 'push' && has_fcm_token`. No debe depender de `receive_notifications` ni ejecutar `DELETE` al cambiar ese campo.
+
+No existe un vencimiento por horas ni una tarea programada de eliminación de tokens FCM en este backend. El registro se elimina por petición `DELETE`, cambio de canal fuera de push, cambio a `inactive`, reasignación del dispositivo a otra cuenta o respuesta `UNREGISTERED` de Firebase. Estas eliminaciones dejan un motivo en el log, sin incluir el token.
 
 ## About Laravel
 
