@@ -17,7 +17,21 @@ class ClientController extends Controller
     {
         $user = Auth::user();
         // Filtrar por el negocio del usuario actual
-        $query = Client::query()->where('business_id', $user->business_id);
+        $query = Client::query()
+            ->select([
+                'id',
+                'business_id',
+                'name',
+                'phone',
+                'latitude',
+                'longitude',
+                'address',
+                'address_detail',
+                'image',
+                'estimated_time',
+                'approximate_distance',
+            ])
+            ->where('business_id', $user->business_id);
 
         if ($request->filled('search')) {
             $searchTerm = $request->search;
@@ -40,12 +54,16 @@ class ClientController extends Controller
         }
 
         $perPage = $request->get('per_page', 15);
+        $total = null;
         if ($perPage == -1) {
             $total = $query->count();
             $perPage = $total > 0 ? $total : 15;
         }
 
-        $clients = $query->orderBy('name')->paginate($perPage);
+        $clients = $query
+            ->orderBy('name')
+            ->orderBy('id')
+            ->paginate($perPage, total: $total);
         return response()->json($clients);
     }
 
