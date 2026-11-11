@@ -19,6 +19,7 @@ use App\Models\Client;
 use App\Models\Category;
 use App\Models\Expense;
 use App\Notifications\OrderAssignedNotification;
+use App\Services\ClientLocationResolver;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 
@@ -29,15 +30,15 @@ class SaleController extends Controller
      * Busca el cliente por teléfono o lo crea si es nuevo.
      * Permite sobreescribir el monto total del producto.
      */
-    public function quickOrder(Request $request)
+    public function quickOrder(Request $request, ClientLocationResolver $locations)
     {
         $business = Auth::user()->business;
         $validated = $request->validate([
             'phone' => 'required|string|size:9',
             'customer_name' => 'nullable|string|max:255',
             'address' => 'nullable|string|max:500',
-            'latitude' => 'nullable|numeric',
-            'longitude' => 'nullable|numeric',
+            'latitude' => 'nullable|numeric|between:-90,90',
+            'longitude' => 'nullable|numeric|between:-180,180',
             // Se mantiene product_id/quantity por compatibilidad con clientes antiguos.
             'product_id' => 'required_without:items|nullable|exists:products,id',
             'quantity' => 'required_without:items|nullable|integer|min:1',
@@ -51,12 +52,22 @@ class SaleController extends Controller
             'scheduled_at' => 'nullable|date',
         ]);
 
-        $sale = DB::transaction(function () use ($validated, $business) {
-            // 1. Buscar o Crear Cliente (Basado en teléfono Y dirección para permitir múltiples ubicaciones)
-            $client = Client::where('phone', $validated['phone'])
-                ->where('address', $validated['address'] ?? null)
-                ->where('business_id', $business->id)
-                ->first();
+        $sale = DB::transaction(function () use ($validated, $business, $locations) {
+            // 1. Reutilizar clientes con el mismo teléfono y una ubicación a 100 m o menos.
+            $client = $locations->findNearby(
+                $business->id,
+                $validated['phone'],
+                $validated['latitude'] ?? null,
+                $validated['longitude'] ?? null,
+            );
+
+            // Cuando la app no envía coordenadas, conservar la búsqueda por dirección exacta.
+            if (! $client && (! isset($validated['latitude']) || ! isset($validated['longitude']))) {
+                $client = Client::where('phone', $validated['phone'])
+                    ->where('address', $validated['address'] ?? null)
+                    ->where('business_id', $business->id)
+                    ->first();
+            }
 
             if (!$client) {
                 $client = Client::create([
@@ -68,6 +79,12 @@ class SaleController extends Controller
                     'longitude' => $validated['longitude'] ?? 0,
                     'business_id' => $business->id,
                     'created_by_user_id' => Auth::id(),
+                ]);
+            } elseif (isset($validated['latitude'], $validated['longitude'])) {
+                $locations->updateLocation($client, [
+                    'latitude' => $validated['latitude'],
+                    'longitude' => $validated['longitude'],
+                    'address' => $validated['address'] ?? null,
                 ]);
             }
 

@@ -10,6 +10,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\Storage;
+use App\Services\ClientLocationResolver;
 
 class ClientController extends Controller
 {
@@ -67,10 +68,30 @@ class ClientController extends Controller
         return response()->json($clients);
     }
 
-    public function store(StoreClientRequest $request)
+    public function store(StoreClientRequest $request, ClientLocationResolver $locations)
     {
         $user = Auth::user();
         $validated = $request->validated();
+
+        $nearbyClient = $locations->findNearby(
+            $user->business_id,
+            $validated['phone'] ?? null,
+            $validated['latitude'],
+            $validated['longitude'],
+        );
+
+        if ($nearbyClient) {
+            if (isset($validated['route']) && is_string($validated['route'])) {
+                $decoded = json_decode($validated['route'], true);
+                if (json_last_error() === JSON_ERROR_NONE) {
+                    $validated['route'] = $decoded;
+                }
+            }
+
+            $locations->updateLocation($nearbyClient, $validated);
+
+            return response()->json($nearbyClient->fresh(), 200);
+        }
 
         if ($request->hasFile('image')) {
             $file = $request->file('image');
