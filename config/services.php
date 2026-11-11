@@ -45,4 +45,8 @@ return [
         'android_channel_id' => env('FIREBASE_ANDROID_CHANNEL_ID', 'default'),
     ],
 
+    'deepseek' => [
+        'api_key' => env('DEEPSEEK_API_KEY'),
+    ],
+
 ];
