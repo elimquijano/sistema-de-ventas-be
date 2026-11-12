@@ -27,4 +27,12 @@ class CashRegister extends Model
     {
         return $this->hasMany(Sale::class);
     }
+
+    public function calculateCashToDeliver(): float
+    {
+        return (float) $this->initial_amount
+            + (float) $this->cash_sales_amount
+            + (float) $this->manual_inflow
+            + (float) ($this->credit_collections ?? 0);
+    }
 }

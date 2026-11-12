@@ -201,7 +201,7 @@ class CashRegisterController extends Controller
         $manualInflow = (float) $cashRegister->manual_inflow;
 
         // --- 1. LIQUIDACIÓN DE EFECTIVO (Rendición de cuentas física) ---
-        $cashRegister->report_cash_to_deliver = $initial + $cashSales + $creditCollections + $manualInflow;
+        $cashRegister->report_cash_to_deliver = $cashRegister->calculateCashToDeliver();
 
         // --- 2. DESGLOSE DETALLADO (Para que veas de dónde sale cada sol) ---
         $cashRegister->breakdown = [

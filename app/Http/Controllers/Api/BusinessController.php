@@ -114,6 +114,7 @@ class BusinessController extends Controller
             'pending_credits' => $business->credits()->where('status', 'pending')->count(),
             'active_asset_loans' => $business->assetLoans()->where('status', 'loaned')->count(),
             'period_asset_loans' => $business->assetLoans()->whereBetween('created_at', [$startDate, $endDate])->count(),
+            'pending_orders' => $business->sales()->where('status', 'pending')->count(),
         ];
 
         // 2. Histogramas
@@ -212,7 +213,10 @@ class BusinessController extends Controller
             ->with('openedBy:id,first_name,last_name')
             ->whereBetween('opened_at', [$today->copy()->startOfDay(), $today->copy()->endOfDay()])
             ->orderBy('opened_at', 'desc')
-            ->get();
+            ->get()
+            ->each(function ($cashRegister) {
+                $cashRegister->report_cash_to_deliver = $cashRegister->calculateCashToDeliver();
+            });
 
         return response()->json([
             'period_info' => [

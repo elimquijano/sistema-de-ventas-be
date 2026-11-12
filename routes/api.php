@@ -8,7 +8,6 @@ use App\Http\Controllers\Api\CashRegisterController;
 use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\ClientController;
 use App\Http\Controllers\Api\CreditController;
-use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\DeepSeekController;
 use App\Http\Controllers\Api\ExpenseController;
 use App\Http\Controllers\Api\FileController;
@@ -44,13 +43,6 @@ Route::prefix('auth')->group(function () {
 
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('deepseek/chat/completions', [DeepSeekController::class, 'chatCompletions']);
-
-    // Dashboard routes
-    Route::prefix('dashboard')->group(function () {
-        Route::get('stats', [DashboardController::class, 'stats']);
-        Route::get('charts/{type}', [DashboardController::class, 'chartData']);
-        Route::get('recent-activity', [DashboardController::class, 'recentActivity']);
-    });
 
     // Modules routes
     Route::get('modules/tree', [ModuleController::class, 'tree']);
