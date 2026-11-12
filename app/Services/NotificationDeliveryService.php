@@ -15,7 +15,7 @@ class NotificationDeliveryService
     ) {}
 
     /**
-     * @param  array{title:string, body:string, data?:array<string, mixed>, whatsapp_body?:string}  $message
+     * @param  array{title:string, body:string, data?:array<string, mixed>, whatsapp_body?:string, fire_and_forget?:bool}  $message
      */
     public function send(User $user, array $message, bool $requiresSystemOptIn = true): bool
     {
@@ -31,7 +31,7 @@ class NotificationDeliveryService
         };
     }
 
-    /** @param array{title:string, body:string, data?:array<string, mixed>, whatsapp_body?:string} $message */
+    /** @param array{title:string, body:string, data?:array<string, mixed>, whatsapp_body?:string, fire_and_forget?:bool} $message */
     private function sendPush(User $user, array $message): bool
     {
         if (! $user->fcm_token) {
@@ -86,7 +86,7 @@ class NotificationDeliveryService
         }
     }
 
-    /** @param array{title:string, body:string, data?:array<string, mixed>, whatsapp_body?:string} $message */
+    /** @param array{title:string, body:string, data?:array<string, mixed>, whatsapp_body?:string, fire_and_forget?:bool} $message */
     private function sendWhatsApp(User $user, array $message): bool
     {
         if (! $user->phone) {
@@ -95,10 +95,11 @@ class NotificationDeliveryService
             return false;
         }
 
-        return $this->whatsApp->sendMessage(
-            $user->phone,
-            $message['whatsapp_body'] ?? "*{$message['title']}*\n\n{$message['body']}"
-        );
+        $body = $message['whatsapp_body'] ?? "*{$message['title']}*\n\n{$message['body']}";
+
+        return ($message['fire_and_forget'] ?? false)
+            ? $this->whatsApp->sendMessageWithoutWaiting($user->phone, $body)
+            : $this->whatsApp->sendMessage($user->phone, $body);
     }
 
     private function logMissingSmsProvider(User $user): bool
