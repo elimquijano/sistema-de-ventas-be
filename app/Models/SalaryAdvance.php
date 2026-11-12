@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 
 class SalaryAdvance extends Model
 {
-    use HasFactory, SoftDeletes, Auditable;
+    use Auditable, HasFactory, SoftDeletes;
 
     protected $fillable = [
         'user_id',
@@ -20,6 +20,7 @@ class SalaryAdvance extends Model
         'status',
         'expense_id',
         'payroll_payment_id',
+        'origin_payroll_payment_id',
     ];
 
     protected $casts = [
@@ -46,12 +47,18 @@ class SalaryAdvance extends Model
         return $this->belongsTo(PayrollPayment::class);
     }
 
+    public function originPayrollPayment()
+    {
+        return $this->belongsTo(PayrollPayment::class, 'origin_payroll_payment_id');
+    }
+
     /**
      * Proporciona metadatos para el log de auditoría.
      */
     public function auditMetadata($values)
     {
         $user = $this->user ?? User::find($values['user_id'] ?? $this->user_id);
+
         return [
             'user_name' => $user ? $user->full_name : 'Empleado desconocido',
         ];

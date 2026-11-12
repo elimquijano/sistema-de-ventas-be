@@ -5,10 +5,11 @@ namespace App\Models;
 use App\Traits\Auditable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class AttendanceLog extends Model
 {
-    use HasFactory, Auditable;
+    use Auditable, HasFactory, SoftDeletes;
 
     protected $fillable = [
         'user_id',

@@ -14,10 +14,12 @@ class UserPayrollConfig extends Model
         'business_id',
         'base_salary',
         'payment_frequency',
+        'start_date',
         'work_schedule',
     ];
 
     protected $casts = [
+        'start_date' => 'date',
         'work_schedule' => 'array',
     ];
 

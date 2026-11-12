@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 
 class PayrollPayment extends Model
 {
-    use HasFactory, SoftDeletes, Auditable;
+    use Auditable, HasFactory, SoftDeletes;
 
     protected $fillable = [
         'user_id',
@@ -17,6 +17,7 @@ class PayrollPayment extends Model
         'expense_id',
         'base_salary',
         'advances_discounted',
+        'carryover_amount',
         'final_payment',
         'start_date',
         'end_date',
@@ -45,12 +46,23 @@ class PayrollPayment extends Model
         return $this->belongsTo(Expense::class);
     }
 
+    public function advances()
+    {
+        return $this->hasMany(SalaryAdvance::class);
+    }
+
+    public function carryoverAdvances()
+    {
+        return $this->hasMany(SalaryAdvance::class, 'origin_payroll_payment_id');
+    }
+
     /**
      * Proporciona metadatos para el log de auditoría.
      */
     public function auditMetadata($values)
     {
         $user = $this->user ?? User::find($values['user_id'] ?? $this->user_id);
+
         return [
             'user_name' => $user ? $user->full_name : 'Empleado desconocido',
         ];

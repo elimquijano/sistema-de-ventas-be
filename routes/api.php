@@ -1,10 +1,12 @@
 <?php
 
+use App\Http\Controllers\Api\AssetController;
+use App\Http\Controllers\Api\AssetLoanController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BusinessController;
-use App\Http\Controllers\Api\ClientController;
 use App\Http\Controllers\Api\CashRegisterController;
 use App\Http\Controllers\Api\CategoryController;
+use App\Http\Controllers\Api\ClientController;
 use App\Http\Controllers\Api\CreditController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\DeepSeekController;
@@ -14,10 +16,8 @@ use App\Http\Controllers\Api\LoanController;
 use App\Http\Controllers\Api\ModuleController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\NotificationSettingController;
-use App\Http\Controllers\Api\PermissionController;
-use App\Http\Controllers\Api\AssetController;
-use App\Http\Controllers\Api\AssetLoanController;
 use App\Http\Controllers\Api\PayrollController;
+use App\Http\Controllers\Api\PermissionController;
 use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\PurchaseController;
 use App\Http\Controllers\Api\RoleController;
@@ -152,14 +152,22 @@ Route::middleware('auth:sanctum')->group(function () {
     // Payroll (Planilla, Adelantos y Asistencia)
     Route::prefix('payroll')->group(function () {
         Route::post('config/{user}', [PayrollController::class, 'setConfig']);
+        Route::put('config/{user}', [PayrollController::class, 'setConfig']);
         Route::get('config/{user}', [PayrollController::class, 'getConfig']);
-        
+
+        Route::post('attendance/bulk-absences', [PayrollController::class, 'storeBulkAbsences']);
         Route::post('attendance', [PayrollController::class, 'storeAttendance']);
         Route::get('attendance', [PayrollController::class, 'getAttendance']);
-        
+        Route::get('attendance/{attendanceLog}', [PayrollController::class, 'showAttendance']);
+        Route::match(['put', 'patch'], 'attendance/{attendanceLog}', [PayrollController::class, 'updateAttendance']);
+        Route::delete('attendance/{attendanceLog}', [PayrollController::class, 'destroyAttendance']);
+
         Route::post('advances', [PayrollController::class, 'storeAdvance']);
         Route::get('advances', [PayrollController::class, 'getAdvances']);
-        
+        Route::get('advances/{salaryAdvance}', [PayrollController::class, 'showAdvance']);
+        Route::match(['put', 'patch'], 'advances/{salaryAdvance}', [PayrollController::class, 'updateAdvance']);
+        Route::delete('advances/{salaryAdvance}', [PayrollController::class, 'destroyAdvance']);
+
         Route::get('calculate/{user}', [PayrollController::class, 'calculate']);
         Route::post('pay/{user}', [PayrollController::class, 'pay']);
         Route::get('payments', [PayrollController::class, 'getPayments']);
