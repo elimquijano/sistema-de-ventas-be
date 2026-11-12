@@ -124,14 +124,17 @@ class BusinessController extends Controller
         $avgProfit = $this->calculateAverageProfit($currentMetrics['profit'], $period, $startDate, $endDate);
 
         // 4. Ganancia por Usuario
-        $profitByUser = DB::table('cash_registers')
+        $profitByUser = DB::table('sales')
+            ->join('cash_registers', 'sales.cash_register_id', '=', 'cash_registers.id')
             ->join('users', 'cash_registers.opened_by', '=', 'users.id')
             ->select(
                 DB::raw("CONCAT(users.first_name, ' ', users.last_name) as name"),
-                DB::raw('SUM(cash_registers.profit) as value')
+                DB::raw('SUM(sales.profit_amount) as value')
             )
-            ->where('cash_registers.business_id', $business->id)
+            ->where('sales.business_id', $business->id)
+            ->whereIn('sales.status', ['completed', 'debt'])
             ->whereBetween('cash_registers.opened_at', [$startDate, $endDate])
+            ->whereNull('sales.deleted_at')
             ->groupBy('users.id', 'users.first_name', 'users.last_name')
             ->orderBy('value', 'desc')
             ->get();
@@ -288,23 +291,19 @@ class BusinessController extends Controller
             ->whereNull('deleted_at')
             ->sum('amount');
 
-        $profit = DB::table('cash_registers')
+        $profit = DB::table('sales')
             ->where('business_id', $business->id)
-            ->whereBetween('opened_at', [$start, $end])
-            ->sum('profit');
+            ->whereIn('status', ['completed', 'debt'])
+            ->whereBetween('scheduled_at', [$start, $end])
+            ->whereNull('deleted_at')
+            ->sum('profit_amount');
 
-        $cogs = DB::table('sale_items')
-            ->join('sales', 'sale_items.sale_id', '=', 'sales.id')
-            ->leftJoin('products', function($join) {
-                $join->on('sale_items.item_id', '=', 'products.id')
-                     ->where('sale_items.item_type', '=', 'App\\Models\\Product');
-            })
-            ->where('sales.business_id', $business->id)
-            ->whereIn('sales.status', ['completed', 'debt'])
-            ->whereBetween('sales.scheduled_at', [$start, $end])
-            ->whereNull('sales.deleted_at')
-            ->whereNull('sale_items.deleted_at')
-            ->sum(DB::raw('COALESCE(products.cost, 0) * sale_items.quantity'));
+        $cogs = DB::table('sales')
+            ->where('business_id', $business->id)
+            ->whereIn('status', ['completed', 'debt'])
+            ->whereBetween('scheduled_at', [$start, $end])
+            ->whereNull('deleted_at')
+            ->sum(DB::raw('total_amount - COALESCE(profit_amount, 0)'));
 
         return [
             'sales' => (float)$sales,

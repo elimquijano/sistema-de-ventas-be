@@ -19,12 +19,17 @@ class Sale extends Model
     protected $auditInclude = [
         'sale_number', 
         'total_amount', 
+        'profit_amount',
         'status', 
         'rider_id', 
         'client_id'
     ];
 
     protected $guarded = [];
+
+    protected $casts = [
+        'profit_amount' => 'decimal:2',
+    ];
 
     protected static function boot()
     {
@@ -82,6 +87,23 @@ class Sale extends Model
     public function cashRegister()
     {
         return $this->belongsTo(CashRegister::class);
+    }
+
+    public function calculateProfitAmount(): float
+    {
+        $items = $this->exists
+            ? $this->items()->with('item')->get()
+            : $this->items;
+
+        return round((float) $items->sum(function (SaleItem $saleItem): float {
+            if ($saleItem->item_type === Product::class) {
+                $cost = (float) ($saleItem->item?->cost ?? 0);
+
+                return (float) $saleItem->total_price - ($cost * $saleItem->quantity);
+            }
+
+            return (float) $saleItem->total_price;
+        }), 2);
     }
 
     /**

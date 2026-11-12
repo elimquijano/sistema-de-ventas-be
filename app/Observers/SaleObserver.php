@@ -30,6 +30,12 @@ class SaleObserver
             return;
         }
 
+        if (in_array($sale->status, ['completed', 'debt'], true) && $sale->profit_amount === null) {
+            $sale->forceFill(['profit_amount' => $sale->calculateProfitAmount()])->saveQuietly();
+        } elseif ($sale->status === 'pending' && $sale->profit_amount !== null) {
+            $sale->forceFill(['profit_amount' => null])->saveQuietly();
+        }
+
         // Asegurarse de que la venta tenga un crédito asociado.
         if (!$credit = $sale->credit) {
             return;

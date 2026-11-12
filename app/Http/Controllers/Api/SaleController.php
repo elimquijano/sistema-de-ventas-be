@@ -591,7 +591,6 @@ class SaleController extends Controller
                 'status' => ($isDelivery && count($payments) === 0) ? 'pending' : ($hasCredit ? 'debt' : 'completed'),
             ]);
 
-            $totalProfit = 0;
             $remainingTotal = (float) $totalAmount;
             $lastItemIndex = count($validated['items']) - 1;
             foreach ($validated['items'] as $index => $itemData) {
@@ -611,12 +610,6 @@ class SaleController extends Controller
                         throw new \Exception('Stock insuficiente para el producto: ' . $item->name);
                     }
                     $item->decrement('stock', $itemData['quantity']);
-
-                    // Calcular ganancia del producto: (Precio Venta - Costo) * Cantidad
-                    $totalProfit += ($unitPrice - $item->cost) * $itemData['quantity'];
-                } else {
-                    // Para servicios, la ganancia es el precio total (asumiendo costo 0 o no definido)
-                    $totalProfit += $lineTotal;
                 }
 
                 $sale->items()->create([
@@ -629,10 +622,14 @@ class SaleController extends Controller
                 ]);
             }
 
+            if (in_array($sale->status, ['completed', 'debt'], true)) {
+                $sale->updateQuietly(['profit_amount' => $sale->calculateProfitAmount()]);
+            }
+
             // Solo afectar caja si ya está completada o no es delivery fantasma
             if ($sale->status === 'completed' && $cashRegister) {
                 $cashRegister->increment('expected_amount', $totalAmount);
-                $cashRegister->increment('profit', $totalProfit);
+                $cashRegister->increment('profit', $sale->profit_amount);
 
                 foreach ($payments as $index => $payment) {
                     $sale->payments()->create([
@@ -671,7 +668,7 @@ class SaleController extends Controller
             } elseif ($hasCredit && $cashRegister) {
                 // Si es crédito pero POS directo, registramos el crédito pero aún no el efectivo
                 $cashRegister->increment('expected_amount', $totalAmount);
-                $cashRegister->increment('profit', $totalProfit);
+                $cashRegister->increment('profit', $sale->profit_amount);
                 foreach ($payments as $index => $payment) {
                     $sale->payments()->create([
                         'payment_method' => $payment['payment_method'],
@@ -786,9 +783,11 @@ class SaleController extends Controller
             }
 
             $hasCredit = collect($validated['payments'])->contains('payment_method', 'credit');
+            $saleProfit = $sale->calculateProfitAmount();
 
             $sale->update([
                 'total_amount' => $totalPaid,
+                'profit_amount' => $saleProfit,
                 'status' => $hasCredit ? 'debt' : 'completed',
                 'cash_register_id' => $cashRegister->id,
             ]);
@@ -799,16 +798,6 @@ class SaleController extends Controller
             // pero registrar el descuento como gasto.
             $cashRegister->increment('expected_amount', $sale->total_amount);
 
-            // Calcular ganancia del delivery
-            $saleProfit = 0;
-            foreach ($sale->items as $saleItem) {
-                $item = $saleItem->item;
-                if ($saleItem->item_type === Product::class && $item) {
-                    $saleProfit += ($saleItem->unit_price - $item->cost) * $saleItem->quantity;
-                } elseif ($saleItem->item_type === Service::class) {
-                    $saleProfit += $saleItem->total_price;
-                }
-            }
             $cashRegister->increment('profit', $saleProfit);
 
             foreach ($validated['payments'] as $index => $payment) {
@@ -964,16 +953,7 @@ class SaleController extends Controller
             if ($cashRegister) {
                 $cashRegister->decrement('expected_amount', $sale->total_amount);
 
-                // Calcular la ganancia que se debe restar
-                $saleProfit = 0;
-                foreach ($sale->items as $saleItem) {
-                    $item = $saleItem->item; // Cargado vía MorphTo
-                    if ($saleItem->item_type === Product::class && $item) {
-                        $saleProfit += ($saleItem->unit_price - $item->cost) * $saleItem->quantity;
-                    } elseif ($saleItem->item_type === Service::class) {
-                        $saleProfit += $saleItem->total_price;
-                    }
-                }
+                $saleProfit = (float) ($sale->profit_amount ?? $sale->calculateProfitAmount());
                 $cashRegister->decrement('profit', $saleProfit);
 
                 foreach ($sale->payments as $payment) {
