@@ -137,6 +137,43 @@ class CashRegisterController extends Controller
         return response()->json($cashRegister);
     }
 
+    public function reopen(CashRegister $cashRegister)
+    {
+        if ((int) $cashRegister->business_id !== (int) Auth::user()->business_id) {
+            return response()->json(['message' => 'No autorizado para esta caja.'], 403);
+        }
+
+        if ($cashRegister->status !== 'closed') {
+            return response()->json(['message' => 'La caja ya se encuentra abierta.'], 409);
+        }
+
+        $conflictingRegister = CashRegister::where('business_id', $cashRegister->business_id)
+            ->where('opened_by', $cashRegister->opened_by)
+            ->where('status', 'open')
+            ->whereKeyNot($cashRegister->id)
+            ->first();
+
+        if ($conflictingRegister) {
+            return response()->json([
+                'message' => 'No se puede reabrir porque el usuario ya tiene otra caja abierta.',
+                'conflicting_cash_register_id' => $conflictingRegister->id,
+            ], 409);
+        }
+
+        $cashRegister->update([
+            'final_amount' => null,
+            'difference' => null,
+            'closed_at' => null,
+            'closed_by' => null,
+            'status' => 'open',
+        ]);
+
+        return response()->json([
+            'message' => 'Caja reabierta correctamente. Ya puede continuar operando.',
+            'data' => $cashRegister->fresh()->load(['openedBy', 'closedBy']),
+        ]);
+    }
+
     public function report(CashRegister $cashRegister)
     {
         if ($cashRegister->business_id !== Auth::user()->business_id) {

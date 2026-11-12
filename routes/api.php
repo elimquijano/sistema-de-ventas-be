@@ -105,6 +105,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/cash-registers', [CashRegisterController::class, 'store']);
     Route::post('/cash-registers/{cashRegister}/add-inflow', [CashRegisterController::class, 'addInflow']);
     Route::post('/cash-registers/{cashRegister}/close', [CashRegisterController::class, 'close']);
+    Route::post('/cash-registers/{cashRegister}/reopen', [CashRegisterController::class, 'reopen']);
     Route::get('/cash-registers/{cashRegister}/report', [CashRegisterController::class, 'report']);
 
     // Ventas y Créditos
