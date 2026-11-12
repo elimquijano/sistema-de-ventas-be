@@ -28,6 +28,8 @@ Los pedidos se notifican al usuario asignado en `rider_id` según su canal, inde
 
 Al crear o reasignar un pedido rápido, el backend envía la petición HTTP de WhatsApp y cierra la conexión sin esperar la respuesta del proveedor. El envío es opcional: si falla, la venta sigue creada. No se necesita un worker para esta notificación. Como no se lee la respuesta de WhatsApp, no se puede confirmar la entrega desde esta petición.
 
+Los pedidos rápidos usan una sola estructura para uno o varios elementos: `items` con la lista de `{id, type, quantity}`. `POST /api/sales/quick-order` requiere `items`; en `PUT /api/sales/quick-order/{id}`, si se envía, representa la lista final completa. `type` puede ser `product` o `service`; omitir un elemento de la lista lo quita y devuelve su stock. El pedido debe conservar al menos un elemento y cada cantidad debe ser mayor a cero. El stock se ajusta por la diferencia neta de cada producto. Si no se envía `total_amount`, se conserva el monto de la venta y se redistribuye entre las líneas.
+
 El toggle de push debe considerarse encendido con `notification_channel === 'push' && has_fcm_token`. No debe depender de `receive_notifications` ni ejecutar `DELETE` al cambiar ese campo.
 
 No existe un vencimiento por horas ni una tarea programada de eliminación de tokens FCM en este backend. El registro se elimina por petición `DELETE`, cambio de canal fuera de push, cambio a `inactive`, reasignación del dispositivo a otra cuenta o respuesta `UNREGISTERED` de Firebase. Estas eliminaciones dejan un motivo en el log, sin incluir el token.

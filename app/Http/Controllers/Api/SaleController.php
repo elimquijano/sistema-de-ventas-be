@@ -3,25 +3,23 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\Sale;
-use App\Models\Product;
-use App\Models\Service;
-use App\Models\CashRegister;
-use App\Models\SalePayment;
-use Carbon\Carbon;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Validation\ValidationException;
-use Barryvdh\DomPDF\Facade\Pdf;
-
-use App\Models\Client;
 use App\Models\Category;
+use App\Models\Client;
 use App\Models\Expense;
+use App\Models\Product;
+use App\Models\Sale;
+use App\Models\Service;
 use App\Notifications\OrderAssignedNotification;
 use App\Services\ClientLocationResolver;
+use Barryvdh\DomPDF\Facade\Pdf;
+use Carbon\Carbon;
+use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\ValidationException;
 
 class SaleController extends Controller
 {
@@ -39,11 +37,10 @@ class SaleController extends Controller
             'address' => 'nullable|string|max:500',
             'latitude' => 'nullable|numeric|between:-90,90',
             'longitude' => 'nullable|numeric|between:-180,180',
-            // Se mantiene product_id/quantity por compatibilidad con clientes antiguos.
-            'product_id' => 'required_without:items|nullable|exists:products,id',
-            'quantity' => 'required_without:items|nullable|integer|min:1',
-            'items' => 'required_without:product_id|nullable|array|min:1',
-            'items.*.id' => 'required|integer',
+            'product_id' => 'prohibited',
+            'quantity' => 'prohibited',
+            'items' => 'required|array|min:1',
+            'items.*.id' => 'required|integer|min:1',
             'items.*.type' => 'required|string|in:product,service',
             'items.*.quantity' => 'required|integer|min:1',
             'total_amount' => 'nullable|numeric|min:0',
@@ -89,15 +86,28 @@ class SaleController extends Controller
             }
 
             // 2. Preparar uno o varios productos/servicios.
-            $requestedItems = $validated['items'] ?? [[
-                'id' => $validated['product_id'],
-                'type' => 'product',
-                'quantity' => $validated['quantity'],
-            ]];
+            $requestedItems = $this->normalizeQuickOrderItems($validated['items']);
 
-            $preparedItems = collect($requestedItems)->map(function ($itemData) use ($business) {
+            // Mantener el orden de bloqueos venta -> productos, igual que al editar.
+            Sale::withTrashed()->where('business_id', $business->id)
+                ->orderByRaw("CAST(SUBSTRING(sale_number, 3) AS UNSIGNED) DESC")
+                ->lockForUpdate()->first();
+
+            // Bloquear el stock compartido antes de validar y reservar todos los productos.
+            $productIds = collect($requestedItems)->where('type', 'product')->pluck('id')->unique()->sort()->values();
+            $lockedProducts = Product::query()->where('business_id', $business->id)
+                ->whereIn('id', $productIds)->orderBy('id')->lockForUpdate()->get()->keyBy('id');
+
+            $preparedItems = collect($requestedItems)->map(function ($itemData) use ($business, $lockedProducts) {
                 $modelClass = $itemData['type'] === 'product' ? Product::class : Service::class;
-                $item = $modelClass::where('business_id', $business->id)->findOrFail($itemData['id']);
+                $item = $modelClass === Product::class
+                    ? $lockedProducts->get($itemData['id'])
+                    : Service::where('business_id', $business->id)->find($itemData['id']);
+                if (! $item) {
+                    throw ValidationException::withMessages([
+                        'items' => ['Un producto o servicio no existe en este negocio.'],
+                    ]);
+                }
 
                 return compact('itemData', 'modelClass', 'item');
             });
@@ -177,54 +187,40 @@ class SaleController extends Controller
      */
     public function updateQuickOrder(Request $request, Sale $sale)
     {
-        if ($sale->status !== 'pending') {
-            return response()->json(['message' => 'Solo se pueden editar pedidos en estado pendiente.'], 422);
-        }
-
         $validated = $request->validate([
             'rider_id' => 'sometimes|required|exists:users,id',
             'total_amount' => 'sometimes|required|numeric|min:0',
-            'quantity' => 'sometimes|required|integer|min:1',
+            'product_id' => 'prohibited',
+            'quantity' => 'prohibited',
+            'items' => 'sometimes|required|array|min:1',
+            'items.*.id' => 'required|integer|min:1',
+            'items.*.type' => 'required|string|in:product,service',
+            'items.*.quantity' => 'required|integer|min:1',
             'notes' => 'nullable|string',
             'scheduled_at' => 'nullable|date',
         ]);
 
-        $shouldNotifyRider = array_key_exists('rider_id', $validated)
-            && (int) $sale->rider_id !== (int) $validated['rider_id'];
-
-        $sale = DB::transaction(function () use ($validated, $sale) {
-            $item = $sale->items()->first();
-
-            // 1. Manejar cambio de cantidad y stock
-            if (isset($validated['quantity']) && $item && (int)$item->quantity !== (int)$validated['quantity']) {
-                if ($item->item_type === Product::class) {
-                    $product = Product::findOrFail($item->item_id);
-                    $diff = $validated['quantity'] - $item->quantity;
-
-                    if ($diff > 0 && $product->stock < $diff) {
-                        throw ValidationException::withMessages([
-                            'quantity' => ['Stock insuficiente para ' . $product->name . ' (Disponible: ' . $product->stock . ')']
-                        ]);
-                    }
-
-                    $product->decrement('stock', $diff);
-                }
-                $item->quantity = $validated['quantity'];
+        [$sale, $shouldNotifyRider] = DB::transaction(function () use ($validated, $sale) {
+            $sale = Sale::query()->whereKey($sale->id)->lockForUpdate()->firstOrFail();
+            if ($sale->status !== 'pending') {
+                throw ValidationException::withMessages([
+                    'sale' => ['Solo se pueden editar pedidos en estado pendiente.'],
+                ]);
             }
 
-            // 2. Manejar cambio de monto total y recalcular unit_price
-            // Si cambió el monto O la cantidad, recalculamos el precio unitario
-            if ($item && (isset($validated['total_amount']) || isset($validated['quantity']))) {
-                $newTotalAmount = isset($validated['total_amount']) ? $validated['total_amount'] : $sale->total_amount;
+            $shouldNotifyRider = array_key_exists('rider_id', $validated)
+                && (int) $sale->rider_id !== (int) $validated['rider_id'];
+            $existingItems = $sale->items()->lockForUpdate()->get();
+            $totalAmount = (float) ($validated['total_amount'] ?? $sale->total_amount);
 
-                $unitPrice = $newTotalAmount / $item->quantity;
-                $item->update([
-                    'unit_price' => $unitPrice,
-                    'total_price' => $newTotalAmount,
-                    'quantity' => $item->quantity,
-                ]);
+            if (array_key_exists('items', $validated)) {
+                $this->syncQuickOrderItems($sale, $existingItems, $validated['items'], $totalAmount);
+            } elseif (array_key_exists('total_amount', $validated)) {
+                $this->repriceQuickOrderItems($existingItems, $totalAmount);
+            }
 
-                $sale->total_amount = $newTotalAmount;
+            if (array_key_exists('total_amount', $validated)) {
+                $sale->total_amount = $totalAmount;
             }
 
             if (isset($validated['rider_id'])) {
@@ -241,7 +237,7 @@ class SaleController extends Controller
             }
 
             $sale->save();
-            return $sale;
+            return [$sale, $shouldNotifyRider];
         });
 
         $sale->load('items', 'client', 'rider');
@@ -250,6 +246,139 @@ class SaleController extends Controller
         }
 
         return response()->json($sale);
+    }
+
+    /**
+     * @param  array<int, array{id:int, type:string, quantity:int}>  $items
+     * @return Collection<int, array{id:int, type:string, quantity:int}>
+     */
+    private function normalizeQuickOrderItems(array $items): Collection
+    {
+        return collect($items)
+            ->groupBy(fn (array $item) => $item['type'].':'.$item['id'])
+            ->map(fn (Collection $lines) => [
+                'id' => (int) $lines->first()['id'],
+                'type' => $lines->first()['type'],
+                'quantity' => (int) $lines->sum('quantity'),
+            ])
+            ->values();
+    }
+
+    /** @param array<int, array{id:int, type:string, quantity:int}> $requestedItems */
+    private function syncQuickOrderItems(Sale $sale, Collection $existingItems, array $requestedItems, float $totalAmount): void
+    {
+        // items siempre representa la lista final completa del pedido.
+        $requested = $this->normalizeQuickOrderItems($requestedItems);
+
+        $productIds = $requested->where('type', 'product')->pluck('id')
+            ->merge($existingItems->where('item_type', Product::class)->pluck('item_id'))
+            ->unique()->sort()->values();
+        $products = Product::query()
+            ->where('business_id', $sale->business_id)
+            ->whereIn('id', $productIds)
+            ->orderBy('id')->lockForUpdate()->get()->keyBy('id');
+        $services = Service::query()
+            ->where('business_id', $sale->business_id)
+            ->whereIn('id', $requested->where('type', 'service')->pluck('id'))
+            ->get()->keyBy('id');
+
+        foreach ($requested as $item) {
+            $catalogItem = $item['type'] === 'product'
+                ? $products->get($item['id'])
+                : $services->get($item['id']);
+            if (! $catalogItem) {
+                throw ValidationException::withMessages(['items' => ['Un producto o servicio no existe en este negocio.']]);
+            }
+        }
+
+        $oldProductQuantities = $existingItems->where('item_type', Product::class)
+            ->groupBy('item_id')->map(fn (Collection $lines) => $lines->sum('quantity'));
+        $newProductQuantities = $requested->where('type', 'product')->keyBy('id')
+            ->map(fn (array $item) => $item['quantity']);
+
+        // Validar todas las diferencias antes de modificar stock o líneas.
+        foreach ($productIds as $productId) {
+            $delta = $newProductQuantities->get($productId, 0) - $oldProductQuantities->get($productId, 0);
+            $product = $products->get($productId);
+            if ($delta > 0 && $product->stock < $delta) {
+                throw ValidationException::withMessages([
+                    'items' => ['Stock insuficiente para '.$product->name.' (Disponible: '.$product->stock.')'],
+                ]);
+            }
+        }
+
+        foreach ($productIds as $productId) {
+            $delta = $newProductQuantities->get($productId, 0) - $oldProductQuantities->get($productId, 0);
+            $product = $products->get($productId);
+            if ($product && $delta > 0) {
+                $product->decrement('stock', $delta);
+            } elseif ($product && $delta < 0) {
+                $product->increment('stock', -$delta);
+            }
+        }
+
+        $existingByKey = $existingItems->groupBy(fn ($item) => $item->item_type.':'.$item->item_id);
+        $lines = $requested->map(function (array $item) use ($existingByKey, $products, $services) {
+            $type = $item['type'] === 'product' ? Product::class : Service::class;
+            $previous = $existingByKey->get($type.':'.$item['id'], collect());
+            $catalogItem = $item['type'] === 'product' ? $products->get($item['id']) : $services->get($item['id']);
+            $oldQuantity = $previous->sum('quantity');
+
+            return [
+                'item' => $item,
+                'type' => $type,
+                'catalog' => $catalogItem,
+                'existing' => $previous->first(),
+                'weight' => $oldQuantity > 0
+                    ? $previous->sum('total_price') / $oldQuantity * $item['quantity']
+                    : (float) $catalogItem->price * $item['quantity'],
+            ];
+        });
+        $weightTotal = $lines->sum('weight');
+        $remainingTotal = $totalAmount;
+
+        foreach ($lines as $index => $line) {
+            $lineTotal = $index === $lines->count() - 1
+                ? $remainingTotal
+                : round($weightTotal > 0 ? $line['weight'] / $weightTotal * $totalAmount : 0, 2);
+            $remainingTotal -= $lineTotal;
+
+            $attributes = [
+                'item_id' => $line['item']['id'],
+                'item_type' => $line['type'],
+                'item_name' => $line['catalog']->name,
+                'quantity' => $line['item']['quantity'],
+                'unit_price' => $lineTotal / $line['item']['quantity'],
+                'total_price' => $lineTotal,
+            ];
+
+            if ($line['existing']) {
+                $line['existing']->update($attributes);
+            } else {
+                $sale->items()->create($attributes);
+            }
+        }
+
+        $keptIds = $lines->pluck('existing')->filter()->pluck('id');
+        $existingItems->reject(fn ($item) => $keptIds->contains($item->id))
+            ->each(fn ($item) => $item->delete());
+    }
+
+    private function repriceQuickOrderItems(Collection $items, float $totalAmount): void
+    {
+        $weightTotal = $items->sum('total_price');
+        $remainingTotal = $totalAmount;
+
+        foreach ($items->values() as $index => $item) {
+            $lineTotal = $index === $items->count() - 1
+                ? $remainingTotal
+                : round($weightTotal > 0 ? (float) $item->total_price / $weightTotal * $totalAmount : 0, 2);
+            $remainingTotal -= $lineTotal;
+            $item->update([
+                'unit_price' => $lineTotal / $item->quantity,
+                'total_price' => $lineTotal,
+            ]);
+        }
     }
 
     /**
