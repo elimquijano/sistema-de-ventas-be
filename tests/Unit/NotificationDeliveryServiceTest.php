@@ -118,14 +118,13 @@ class NotificationDeliveryServiceTest extends TestCase
         ]);
 
         $firebase->shouldNotReceive('send');
-        $whatsApp->shouldReceive('sendMessageWithoutWaiting')->once()
+        $whatsApp->shouldReceive('sendMessage')->once()
             ->with('999999999', 'Mensaje bonito del pedido')->andReturnTrue();
 
         $this->assertTrue((new NotificationDeliveryService($firebase, $whatsApp))->send($user, [
             'title' => 'Nuevo pedido',
             'body' => 'Pedido asignado',
             'whatsapp_body' => 'Mensaje bonito del pedido',
-            'fire_and_forget' => true,
         ], false));
     }
 

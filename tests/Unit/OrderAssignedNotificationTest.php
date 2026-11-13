@@ -49,7 +49,7 @@ class OrderAssignedNotificationTest extends TestCase
         $message = (new OrderAssignedNotification($sale))->toPreferredChannel(new User);
 
         $this->assertSame('Nuevo pedido', $message['title']);
-        $this->assertTrue($message['fire_and_forget']);
+        $this->assertArrayNotHasKey('fire_and_forget', $message);
         $this->assertSame(
             '2× Pollo a la brasa, 1× Gaseosa personal · Jr. San Miguel, Amarilis. Revisa la app.',
             $message['body']

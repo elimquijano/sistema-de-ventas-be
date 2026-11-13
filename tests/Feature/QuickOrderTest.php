@@ -148,7 +148,7 @@ class QuickOrderTest extends TestCase
         Sanctum::actingAs($owner);
         $this->riderId = $rider->id;
         $whatsApp = Mockery::mock(WhatsAppService::class);
-        $whatsApp->shouldReceive('sendMessageWithoutWaiting')->zeroOrMoreTimes()->andReturnTrue();
+        $whatsApp->shouldReceive('sendMessage')->zeroOrMoreTimes()->andReturnTrue();
         $this->app->instance(WhatsAppService::class, $whatsApp);
     }
 
@@ -157,7 +157,7 @@ class QuickOrderTest extends TestCase
     public function test_quick_order_is_created_when_whatsapp_attempt_fails(): void
     {
         $whatsApp = Mockery::mock(WhatsAppService::class);
-        $whatsApp->shouldReceive('sendMessageWithoutWaiting')->once()->andReturnFalse();
+        $whatsApp->shouldReceive('sendMessage')->once()->andReturnFalse();
         $this->app->instance(WhatsAppService::class, $whatsApp);
 
         $this->postJson('/api/sales/quick-order', $this->orderData())
@@ -171,7 +171,7 @@ class QuickOrderTest extends TestCase
     public function test_quick_order_is_created_when_whatsapp_attempt_throws(): void
     {
         $whatsApp = Mockery::mock(WhatsAppService::class);
-        $whatsApp->shouldReceive('sendMessageWithoutWaiting')->once()
+        $whatsApp->shouldReceive('sendMessage')->once()
             ->andThrow(new \RuntimeException('WhatsApp no disponible'));
         $this->app->instance(WhatsAppService::class, $whatsApp);
 
@@ -181,6 +181,19 @@ class QuickOrderTest extends TestCase
 
         $this->assertSame(1, Sale::count());
         $this->assertSame(1, DB::table('notifications')->count());
+    }
+
+    public function test_quick_order_attempts_real_whatsapp_delivery(): void
+    {
+        $whatsApp = Mockery::mock(WhatsAppService::class);
+        $whatsApp->shouldReceive('sendMessage')->once()->andReturnTrue();
+        $this->app->instance(WhatsAppService::class, $whatsApp);
+
+        $this->postJson('/api/sales/quick-order', $this->orderData())
+            ->assertCreated()
+            ->assertJsonPath('status', 'pending');
+
+        $this->assertSame(1, Sale::count());
     }
 
     public function test_editing_multiple_items_adjusts_only_the_net_stock_difference(): void

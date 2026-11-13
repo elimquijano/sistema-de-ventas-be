@@ -44,7 +44,7 @@ class OrderAssignedNotification extends Notification
         ];
     }
 
-    /** @return array{title:string, body:string, data:array<string, mixed>, whatsapp_body:string, fire_and_forget:bool} */
+    /** @return array{title:string, body:string, data:array<string, mixed>, whatsapp_body:string} */
     public function toPreferredChannel(object $notifiable): array
     {
         $formatter = app(OrderNotificationFormatter::class);
@@ -59,7 +59,6 @@ class OrderAssignedNotification extends Notification
                 'sale_number' => $this->sale->sale_number,
             ],
             'whatsapp_body' => $formatter->whatsAppBody($this->sale),
-            'fire_and_forget' => true,
         ];
     }
 }
