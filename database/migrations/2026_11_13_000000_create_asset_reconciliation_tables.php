@@ -9,6 +9,16 @@ return new class extends Migration
 {
     public function up(): void
     {
+        // MySQL puede dejar tablas creadas si una migracion DDL falla a mitad.
+        // Como esta migracion aun no fue registrada, limpiamos solo sus tablas nuevas
+        // para permitir un reintento seguro sin tocar datos de modulos existentes.
+        Schema::disableForeignKeyConstraints();
+        Schema::dropIfExists('asset_inventory_snapshot_items');
+        Schema::dropIfExists('asset_inventory_snapshots');
+        Schema::dropIfExists('asset_inventory_movements');
+        Schema::dropIfExists('asset_reconciliation_product_mappings');
+        Schema::enableForeignKeyConstraints();
+
         Schema::create('asset_reconciliation_product_mappings', function (Blueprint $table): void {
             $table->id();
             $table->foreignId('business_id')->constrained()->cascadeOnDelete();
@@ -18,7 +28,7 @@ return new class extends Migration
             $table->boolean('active')->default(true);
             $table->timestamps();
 
-            $table->unique(['business_id', 'product_id']);
+            $table->unique(['business_id', 'product_id'], 'asset_recon_business_product_uq');
             $table->index(['business_id', 'asset_id', 'active'], 'asset_reconciliation_mapping_lookup');
         });
 
@@ -79,7 +89,7 @@ return new class extends Migration
             $table->json('calculation')->nullable();
             $table->timestamps();
 
-            $table->unique(['snapshot_id', 'asset_id']);
+            $table->unique(['snapshot_id', 'asset_id'], 'asset_snapshot_item_asset_uq');
         });
 
         $now = now();
