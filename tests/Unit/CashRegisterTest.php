@@ -18,4 +18,22 @@ class CashRegisterTest extends TestCase
 
         $this->assertSame(425.50, $cashRegister->calculateCashToDeliver());
     }
+
+    public function test_dashboard_cash_is_the_sum_of_every_cash_source(): void
+    {
+        $cashRegister = new CashRegister([
+            'initial_amount' => 50,
+            'cash_sales_amount' => 120,
+            'manual_inflow' => 15,
+            'credit_collections' => 25,
+        ]);
+
+        $cash = $cashRegister->calculateCashToDeliver();
+
+        $cashRegister->cash = $cash;
+        $cashRegister->report_cash_to_deliver = $cash;
+
+        $this->assertSame(210.0, $cashRegister->cash);
+        $this->assertSame($cashRegister->report_cash_to_deliver, $cashRegister->cash);
+    }
 }

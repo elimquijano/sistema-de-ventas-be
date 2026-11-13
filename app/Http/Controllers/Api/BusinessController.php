@@ -216,7 +216,10 @@ class BusinessController extends Controller
             ->orderBy('opened_at', 'desc')
             ->get()
             ->each(function ($cashRegister) {
-                $cashRegister->report_cash_to_deliver = $cashRegister->calculateCashToDeliver();
+                $cash = $cashRegister->calculateCashToDeliver();
+
+                $cashRegister->cash = $cash;
+                $cashRegister->report_cash_to_deliver = $cash;
             });
 
         // 10. Entradas y salidas de bienes en el periodo del dashboard
