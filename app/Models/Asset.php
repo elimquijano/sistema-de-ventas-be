@@ -26,4 +26,19 @@ class Asset extends Model
     {
         return $this->belongsTo(Business::class);
     }
+
+    public function reconciliationProductMappings()
+    {
+        return $this->hasMany(AssetReconciliationProductMapping::class);
+    }
+
+    public function inventoryMovements()
+    {
+        return $this->hasMany(AssetInventoryMovement::class);
+    }
+
+    public function snapshotItems()
+    {
+        return $this->hasMany(AssetInventorySnapshotItem::class);
+    }
 }

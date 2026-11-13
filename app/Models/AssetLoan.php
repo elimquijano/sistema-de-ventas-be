@@ -55,6 +55,11 @@ class AssetLoan extends Model
         return $this->belongsTo(User::class, 'created_by');
     }
 
+    public function inventoryMovements()
+    {
+        return $this->hasMany(AssetInventoryMovement::class);
+    }
+
     /**
      * Proporciona metadatos para el log de auditoría.
      */

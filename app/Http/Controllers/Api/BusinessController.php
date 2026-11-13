@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\AssetInventoryMovement;
 use App\Models\Business;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -218,6 +219,39 @@ class BusinessController extends Controller
                 $cashRegister->report_cash_to_deliver = $cashRegister->calculateCashToDeliver();
             });
 
+        // 10. Entradas y salidas de bienes en el periodo del dashboard
+        $assetFlowRows = AssetInventoryMovement::query()
+            ->where('business_id', $business->id)
+            ->whereIn('type', ['loan_out', 'loan_return'])
+            ->whereBetween('occurred_at', [$startDate, $endDate])
+            ->with('asset:id,name')
+            ->selectRaw('asset_id, type, SUM(quantity) as quantity')
+            ->groupBy('asset_id', 'type')
+            ->get()
+            ->groupBy('asset_id');
+
+        $assetFlowItems = $assetFlowRows->map(function ($rows, $assetId) use ($business, $startDate, $endDate) {
+            $outgoing = (int) optional($rows->firstWhere('type', 'loan_out'))->quantity;
+            $incoming = (int) optional($rows->firstWhere('type', 'loan_return'))->quantity;
+
+            return [
+                'asset_id' => (int) $assetId,
+                'asset_name' => $rows->first()?->asset?->name,
+                'outgoing' => $outgoing,
+                'incoming' => $incoming,
+                'net_out' => $outgoing - $incoming,
+                'details_url' => '/api/businesses/'.$business->id.'/asset-flow/'.$assetId
+                    .'?from='.$startDate->toDateString().'&to='.$endDate->toDateString(),
+            ];
+        })->values();
+
+        $assetFlow = [
+            'outgoing' => $assetFlowItems->sum('outgoing'),
+            'incoming' => $assetFlowItems->sum('incoming'),
+            'net_out' => $assetFlowItems->sum('net_out'),
+            'items' => $assetFlowItems,
+        ];
+
         return response()->json([
             'period_info' => [
                 'label' => $period,
@@ -244,6 +278,7 @@ class BusinessController extends Controller
             ],
             'top_products' => $topProducts,
             'cash_registers_today' => $cashRegistersToday,
+            'asset_flow' => $assetFlow,
         ]);
     }
 

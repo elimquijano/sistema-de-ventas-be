@@ -5,7 +5,9 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreAssetLoanRequest;
 use App\Models\Asset;
+use App\Models\AssetInventoryMovement;
 use App\Models\AssetLoan;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -69,6 +71,10 @@ class AssetLoanController extends Controller
         $validated = $request->validated();
         $asset = Asset::findOrFail($validated['asset_id']);
 
+        if ((int) $asset->business_id !== (int) Auth::user()->business_id) {
+            return response()->json(['message' => 'El bien no pertenece al negocio.'], 422);
+        }
+
         if ($asset->available_quantity < $validated['quantity']) {
             return response()->json(['message' => 'No hay suficiente cantidad disponible del activo.'], 422);
         }
@@ -81,6 +87,18 @@ class AssetLoanController extends Controller
             ]));
 
             $asset->decrement('available_quantity', $validated['quantity']);
+
+            AssetInventoryMovement::create([
+                'business_id' => Auth::user()->business_id,
+                'asset_id' => $asset->id,
+                'asset_loan_id' => $loan->id,
+                'type' => 'loan_out',
+                'quantity' => $validated['quantity'],
+                'counterparty' => $validated['borrower_name'],
+                'occurred_at' => Carbon::parse($validated['loan_date'])->startOfDay(),
+                'notes' => $validated['notes'] ?? null,
+                'created_by' => Auth::id(),
+            ]);
 
             return $loan;
         });
@@ -126,6 +144,23 @@ class AssetLoanController extends Controller
                 // Si se perdió, sale definitivamente del inventario total
                 $assetLoan->asset->decrement('total_quantity', $quantityToProcess);
             }
+
+            AssetInventoryMovement::create([
+                'business_id' => $assetLoan->business_id,
+                'asset_id' => $assetLoan->asset_id,
+                'asset_loan_id' => $assetLoan->id,
+                'type' => match ($validated['status']) {
+                    'returned' => 'loan_return',
+                    'damaged' => 'damaged',
+                    'lost' => 'lost',
+                },
+                'condition' => $validated['status'] === 'returned' ? 'empty' : null,
+                'quantity' => $quantityToProcess,
+                'counterparty' => $assetLoan->borrower_name,
+                'occurred_at' => now(),
+                'notes' => $validated['notes'] ?? null,
+                'created_by' => Auth::id(),
+            ]);
 
             // Si ya no queda nada pendiente, marcar como devuelto
             $newPending = $assetLoan->quantity - ($assetLoan->returned_quantity + $assetLoan->damaged_quantity + $assetLoan->lost_quantity);

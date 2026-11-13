@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\AssetController;
 use App\Http\Controllers\Api\AssetLoanController;
+use App\Http\Controllers\Api\AssetReconciliationController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BusinessController;
 use App\Http\Controllers\Api\CashRegisterController;
@@ -134,6 +135,8 @@ Route::middleware('auth:sanctum')->group(function () {
     // Assets (Bienes)
     Route::apiResource('assets', AssetController::class);
     Route::get('assets/{asset}/timeline', [AssetController::class, 'timeline']);
+    Route::get('assets/{asset}/reconciliation-products', [AssetReconciliationController::class, 'products']);
+    Route::put('assets/{asset}/reconciliation-products', [AssetReconciliationController::class, 'updateProducts']);
 
     // Asset Loans (Préstamos de Fierros)
     Route::get('asset-loans', [AssetLoanController::class, 'index']);
@@ -141,6 +144,15 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('asset-loans/{assetLoan}', [AssetLoanController::class, 'show']);
     Route::post('asset-loans/{assetLoan}/return', [AssetLoanController::class, 'returnAsset']);
     Route::get('asset-loans/{assetLoan}/timeline', [AssetLoanController::class, 'timeline']);
+
+    Route::prefix('businesses/{business}/asset-reconciliation')->group(function () {
+        Route::get('prepare', [AssetReconciliationController::class, 'prepare']);
+        Route::post('snapshots', [AssetReconciliationController::class, 'storeSnapshot']);
+        Route::get('snapshots', [AssetReconciliationController::class, 'snapshots']);
+        Route::get('snapshots/{snapshot}', [AssetReconciliationController::class, 'showSnapshot']);
+        Route::post('movements', [AssetReconciliationController::class, 'storeMovement']);
+    });
+    Route::get('businesses/{business}/asset-flow/{asset}', [AssetReconciliationController::class, 'assetFlow']);
 
     // Payroll (Planilla, Adelantos y Asistencia)
     Route::prefix('payroll')->group(function () {

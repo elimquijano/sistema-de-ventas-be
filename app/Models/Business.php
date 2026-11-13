@@ -96,6 +96,16 @@ class Business extends Model
         return $this->hasMany(AssetLoan::class);
     }
 
+    public function assetInventoryMovements()
+    {
+        return $this->hasMany(AssetInventoryMovement::class);
+    }
+
+    public function assetInventorySnapshots()
+    {
+        return $this->hasMany(AssetInventorySnapshot::class);
+    }
+
     public function salaryAdvances()
     {
         return $this->hasMany(SalaryAdvance::class);
